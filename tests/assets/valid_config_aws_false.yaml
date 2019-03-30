@@ -1,0 +1,4 @@
+INPUT_PARQUET_LOCATION: inputdir
+DYESCORE_DATA_DIR: outputdir
+USE_AWS: False
+
