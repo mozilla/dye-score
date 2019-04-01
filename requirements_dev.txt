@@ -1,6 +1,7 @@
 bumpversion==0.5.3
 coverage==4.5.1
 flake8==3.5.0
+nbsphinx==0.4.2
 pytest==3.8.2
 pytest-runner==4.2
 Sphinx==1.8.1
