@@ -13,7 +13,7 @@ requirements = [
     'dask[complete]==1.1.5',
     'pyarrow==0.12.1',
     'pyspark==2.4.0',
-    'pyyaml==3.13',
+    'pyyaml>=4.2b1',
     'xarray==0.12.0',
     'zarr==2.2.0',
 ]
