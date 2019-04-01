@@ -1,7 +1,7 @@
-Dye Score documentation
-=======================
+.. include:: ../README.rst
 
-Repository: http://github.com/mozilla/dye-score
+Table of Contents
+-----------------
 
 .. toctree::
    :maxdepth: 1
