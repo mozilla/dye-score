@@ -13,7 +13,14 @@ Utilities to build the dye-score metric from OpenWPM_ javascript call data.
 
 
 * GitHub repo: https://github.com/mozilla/dye-score/
-* Documentation: https://dye-score.readthedocs.io/
+* Documentation: https://dyescore.readthedocs.io/
 * Free software: Mozilla Public License
+
+Quickstart
+----------
+
+Install dye score: ``pip install dye-score``
+
+Review usage notebook: https://github.com/mozilla/dye-score/blob/master/docs/usage.ipynb
 
 .. _OpenWPM: https://github.com/mozilla/openwpm
