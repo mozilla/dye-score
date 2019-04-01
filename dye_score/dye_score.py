@@ -9,6 +9,10 @@ from dask.dataframe import (
     read_csv,
     read_parquet,
 )
+from pandas import (
+    DataFrame as pd_DataFrame,
+    read_csv as pd_read_csv,
+)
 from pprint import pprint
 from xarray import (
     apply_ufunc,
@@ -497,5 +501,52 @@ class DyeScore:
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
             script_to_dye_max.compute().to_csv(outpath, compression='gzip')
+            outpaths.append(outpath)
+        return outpaths
+
+    ##
+    #  Dye score evaluation
+    ##
+
+    def _get_recall(self, dye_score_threshold, score_df, compare_list):
+        retrieved = score_df[score_df.dye_score > dye_score_threshold]
+        if len(retrieved) > 0:
+            retrieved_and_relevant = retrieved[retrieved.clean_script.isin(compare_list)]
+            return len(retrieved_and_relevant) / len(compare_list)
+        else:
+            return np.NaN
+
+    def _build_plot_data_for_score_df(self, score_df, compare_list):
+        pr = pd_DataFrame({'dye_score_threshold': np.linspace(0, score_df.dye_score.max(), 1000)})
+        pr['recall'] = pr.dye_score_threshold.apply(
+            self._get_recall, score_df=score_df, compare_list=compare_list
+        )
+        pr['n_over_threshold'] = pr.dye_score_threshold.apply(lambda x: (score_df.dye_score > x).sum())
+        return pr
+
+    def build_plot_data_for_thresholds(self, compare_list, thresholds, filename_suffix='dye_snippets', override=False):
+        """Builds a dataframe for evaluation
+
+        Contains the recall compared to the ``compare_list`` for  scripts under the threshold.
+
+        Args:
+            compare_list (list): List of dye scripts to compare for recall.
+            thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            list. Paths results were written to
+        """
+        resultsdir = self.config('DYESCORE_RESULTS_DIR')
+        outpaths = []
+        for threshold in thresholds:
+            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
+            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv.gz')
+            self.file_in_validation(inpath)
+            self.file_out_validation(outpath, override)
+            dye_score_df = pd_read_csv(inpath)
+            plot_df = self._build_plot_data_for_score_df(dye_score_df, compare_list)
+            plot_df.to_csv(outpath, compression='gzip', index=False)
             outpaths.append(outpath)
         return outpaths

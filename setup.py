@@ -9,10 +9,11 @@ with open('README.rst') as readme_file:
     readme = readme_file.read()
 
 requirements = [
-    'pyyaml==3.13',
+    'bokeh==1.0.4',
     'dask[complete]==1.1.5',
     'pyarrow==0.12.1',
     'pyspark==2.4.0',
+    'pyyaml==3.13',
     'xarray==0.12.0',
     'zarr==2.2.0',
 ]
