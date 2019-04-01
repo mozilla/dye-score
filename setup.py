@@ -11,6 +11,7 @@ with open('README.rst') as readme_file:
 requirements = [
     'bokeh==1.0.4',
     'dask[complete]==1.1.5',
+    'numpy>=1.14',
     'pyarrow==0.12.1',
     'pyspark==2.4.0',
     'pyyaml>=4.2b1',

@@ -7,6 +7,7 @@ python:
   - 3.4
 
 install:
+  - sudo apt-get -y install pandoc
   - pip install -r requirements_dev.txt
   - python setup.py install
 
