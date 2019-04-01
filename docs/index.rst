@@ -1,18 +1,12 @@
-Welcome to Dye Score's documentation!
-======================================
+Dye Score documentation
+=======================
+
+Repository: http://github.com/mozilla/dye-score
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
 
-   readme
    installation
    usage
-   modules
+   api
    contributing
-
-Indices and tables
-==================
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

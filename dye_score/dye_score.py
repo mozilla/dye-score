@@ -43,6 +43,22 @@ def get_raw_snippet_from_row(row):
 
 
 class DyeScore:
+    """
+    Args:
+        config_file_path (str): The path of your config file that is used for dye score to interact with your
+            environment.  Holds references to file paths and private data such as AWS API keys. Expects a YAML file with
+            the following keys:
+            * INPUT_PARQUET_LOCATION - the location of the raw or sampled OpenWPM input parquet folder
+            * DYESCORE_DATA_DIR - location where you would like dye score to store data assets
+            * DYESCORE_RESULTS_DIR - location where you would like dye score to store results assets
+            * USE_AWS - default False - set true if data store is AWS
+            * AWS_ACCESS_KEY_ID - optional - for storing and retrieving data on AWS
+            * AWS_SECRET_ACCESS_KEY - optional - for storing and retrieving data on AWS
+            Locations can be a local file path or a bucket.
+        validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
+        print_config (bool, optional): Print out config once saved. Defaults to ``True``.
+    """
+
     __conf = {
         "INPUT_PARQUET_LOCATION": "",
         "DYESCORE_DATA_DIR": "",
@@ -66,8 +82,32 @@ class DyeScore:
         'snippet_dyeing_map': 'snippet_dyeing_map.parquet',
     }
 
+    def __init__(self, config_file_path, validate_config=True, print_config=True):
+        if not os.path.exists(config_file_path):
+            raise ValueError(f'config_file_path `{config_file_path}` not found')
+
+        with open(config_file_path, 'r') as f:
+            config = yaml.safe_load(f.read())
+            self.__conf['INPUT_PARQUET_LOCATION'] = config['INPUT_PARQUET_LOCATION']
+            self.__conf['DYESCORE_DATA_DIR'] = config['DYESCORE_DATA_DIR']
+            self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
+            use_aws = config.get('USE_AWS', False)
+            self.__conf['USE_AWS'] = bool(use_aws)
+            self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
+            self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
+        if print_config is True:
+            pprint(self.__conf)
+        if validate_config is True:
+            self.validate_config()
+
     @property
     def s3_storage_options(self):
+        """s3 storage options built from config
+
+        Returns:
+            dict. if USE_AWS is True returns s3 options as dict, else None.
+        """
+
         if self.config('USE_AWS') is True:
             return dict(
                 anon=False,
@@ -79,56 +119,49 @@ class DyeScore:
 
     @property
     def to_parquet_opts(self):
+        """Options used when saving to parquet."""
         return dict(
             compression='snappy', engine='pyarrow', storage_options=self.s3_storage_options
         )
 
-    def __init__(self, config_file_path, validate_config=True):
-        """Sets up dye score config used to interact with your environment.
-
-        Holds references to file paths and private data such as AWS API keys.
-
-        Expects a YAML file with the following keys:
-            * INPUT_PARQUET_LOCATION - the location of the raw or sampled OpenWPM input parquet folder
-            * DYESCORE_DATA_DIR - location where you would like dye score to store data assets
-            * DYESCORE_RESULTS_DIR - location where you would like dye score to store results assets
-            * USE_AWS - default False - set true if data store is AWS
-            * AWS_ACCESS_KEY_ID - optional - for storing and retrieving data on AWS
-            * AWS_SECRET_ACCESS_KEY - optional - for storing and retrieving data on AWS
-
-        Locations can be a local file path or a bucket.
-        """
-        if not os.path.exists(config_file_path):
-            raise ValueError(f'config_file_path `{config_file_path}` not found')
-
-        with open(config_file_path, 'r') as f:
-            config = yaml.safe_load(f.read())
-
-        self.__conf['INPUT_PARQUET_LOCATION'] = config['INPUT_PARQUET_LOCATION']
-        self.__conf['DYESCORE_DATA_DIR'] = config['DYESCORE_DATA_DIR']
-        use_aws = config.get('USE_AWS', False)
-        self.__conf['USE_AWS'] = bool(use_aws)
-        self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
-        self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
-        pprint(DyeScore.__conf)
-        if validate_config is True:
-            self.validate_config()
-
     def config(self, option):
-        """Used by dye score methods to retrieve config options"""
+        """Method to retrieve config values
+
+        Args:
+            option (str): The desired config option key
+        Returns:
+            The config option value
+        """
         return self.__conf[option]
 
-    def dye_score_data_file(self, filename):
-        dyescoredir = self.config('DYESCORE_DATA_DIR')
-        path = os.path.join(dyescoredir, self.dye_score_files[filename])
-        return path
-
     def validate_config(self):
+        """Validate the config data.
+        Currently just checks that values are correct for aws.
+
+        Raises AssertionError if values are incorrect.
+        """
         if self.config('USE_AWS') is True:
             assert self.config('INPUT_PARQUET_LOCATION').startswith('s3://')
             assert self.config('DYESCORE_DATA_DIR').startswith('s3://')
 
+    def dye_score_data_file(self, filename):
+        """Helper function to return standardized filename.
+
+        DyeScore class holds a dictionary to standardize the file
+        names that DyeScore saves. This method looks up filenames by their
+        short name.
+
+        Args:
+            filename (str): data file name
+        Returns:
+            str. The path where the data file should reside
+        """
+        dyescoredir = self.config('DYESCORE_DATA_DIR')
+        path = os.path.join(dyescoredir, self.dye_score_files[filename])
+        return path
+
     def validate_input_data(self):
+        """Checks for expected columns and types in input data."""
         in_file = self.config('INPUT_PARQUET_LOCATION')
         df = read_parquet(in_file, engine='pyarrow')
         for column in self.dye_score_columns:
@@ -137,6 +170,13 @@ class DyeScore:
         return True
 
     def get_input_df(self, columns=None):
+        """Helper function to return the input dataframe.
+
+        Args:
+            columns (list, optional): List of columns to retrieve. If None, all columns are returned.
+        Returns:
+            dask.DataFrame. Input dataframe with subset of columns requested.
+        """
         if not columns:
             columns = self.dye_score_columns
         in_file = self.config('INPUT_PARQUET_LOCATION')
@@ -152,11 +192,23 @@ class DyeScore:
 
     @staticmethod
     def file_in_validation(inpath):
+        """Check path exists.
+
+        Raises ValueError if not. Used for input files, as these must exist to proceed.
+        Args:
+            inpath (str): Path of input file
+        """
         if not os.path.exists(inpath):
             raise ValueError(f'File {inpath} does not exist. Cannot proceed.')
 
     @staticmethod
     def file_out_validation(outpath, override):
+        """Check path exists.
+        Raises ValueError if override is False. Otherwises removes the existing file.
+        Args:
+            outpath (str): Path of ourput file.
+            override (bool): Whether to raise an error or remove existing data.
+        """
         if os.path.exists(outpath) and override is False:
             raise ValueError(f'File {outpath} already exists. Use `override=True` to remove and replace.')
         if os.path.exists(outpath) and override is True:
@@ -236,11 +288,10 @@ class DyeScore:
     def build_snippets(self, spark, override=False):
         """Builds row-normalized snippet dataset
 
-        Dimensions are n snippets x s unique symbols in dataset.
-
-        Data is output in zarr format with processing by spark, dask, and xarray.
-
-        Creates an intermediate tmp file when converting from spark to dask.
+        * Dimensions are n snippets x s unique symbols in dataset.
+        * Data is output in zarr format with processing by spark, dask, and xarray.
+        * Creates an intermediate tmp file when converting from spark to dask.
+        * Slow running operation - follow spark and dask status to see progress
 
         Args:
             spark (pyspark.sql.session.SparkSession): spark instance
@@ -331,6 +382,22 @@ class DyeScore:
     ##
 
     def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False):
+        """Computes all pairwise distances from dye snippets to all other snippets.
+
+        * Expects snippets file to exist.
+        * Uses chebyshev distance.
+        * Writes results to zarr with name ``snippets_dye_distances_from_{filename_suffix}``
+        * This is a long-running function - see dask for progress
+
+        Args:
+            dye_snippets (np.array): Numpy array of snippets to be dyed. Must be a subset of snippets index.
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            str. Path results were written to
+
+        """
         # File setup
         snippet_file = self.dye_score_data_file('snippets')
         self.file_in_validation(snippet_file)
@@ -360,6 +427,19 @@ class DyeScore:
         return outpath
 
     def compute_snippets_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
+        """Get score for snippets for a range of distance thresholds.
+
+        * Uses hard coded leaky threshold of 20%
+        * Writes results to parquet files with name ``snippets_score_from_{filename_suffix}_{threshold}``
+
+        Args:
+            thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            list. Paths results were written to
+        """
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
         file_name = f'snippets_dye_distances_from_{filename_suffix}'
         inpath = os.path.join(resultsdir, file_name)
@@ -387,7 +467,20 @@ class DyeScore:
             outpaths.append(outpath)
         return outpaths
 
-    def compute_dye_score_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
+    def compute_dye_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
+        """Get dye scores for a range of distance thresholds.
+
+        * Uses results from ``compute_snippets_scores_for_thresholds``
+        * Writes results to gzipped csv files with name ``dye_score_from_{filename_suffix}_{threshold}.csv.gz``
+
+        Args:
+            thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            list. Paths results were written to
+        """
         snippet_dyeing_map_file = self.dye_score_data_file('snippet_dyeing_map')
         snippet_data = read_parquet(snippet_dyeing_map_file, engine='pyarrow')
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
@@ -396,12 +489,13 @@ class DyeScore:
         for threshold in thresholds:
             inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
             outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
+            self.file_in_validation(inpath)
             self.file_out_validation(outpath, override)
 
-            site_counts_df = read_parquet(inpath)
+            site_counts_df = read_parquet(inpath, engine='pyarrow')
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
-            script_to_dye_max.to_csv(outpath, compression='gzip')
+            script_to_dye_max.compute().to_csv(outpath, compression='gzip')
             outpaths.append(outpath)
         return outpaths
