@@ -1,4 +1,5 @@
 INPUT_PARQUET_LOCATION: inputdir
-DYESCORE_DATA_DIR: outputdir
+DYESCORE_DATA_DIR: datadir
+DYESCORE_RESULTS_DIR: dyescoredir
 USE_AWS: False
 

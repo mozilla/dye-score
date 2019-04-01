@@ -1,5 +1,6 @@
 INPUT_PARQUET_LOCATION: s3://inputdir
-DYESCORE_DATA_DIR: s3://outputdir
+DYESCORE_DATA_DIR: s3://datadir
+DYESCORE_RESULTS_DIR: s3://resultsdir
 USE_AWS: True
 AWS_ACCESS_KEY_ID: jgdflkgjsld;gs
 AWS_SECRET_ACCESS_KEY: dsil;guewort9q9vkdf/

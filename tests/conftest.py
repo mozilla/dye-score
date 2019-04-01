@@ -15,6 +15,7 @@ def sample_config():
     return {
         "INPUT_PARQUET_LOCATION": "",
         "DYESCORE_DATA_DIR": "",
+        "DYESCORE_RESULTS_DIR": "",
         "USE_AWS": False,
         "AWS_ACCESS_KEY_ID": "",
         "AWS_SECRET_ACCESS_KEY": "",

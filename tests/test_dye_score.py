@@ -68,7 +68,8 @@ def test_config_requires_valid_yaml(asset_dir):
 def test_config_sets_properties(asset_dir):
     ds = DyeScore(os.path.join(asset_dir, 'valid_config.yaml'))
     assert ds.config('INPUT_PARQUET_LOCATION') == 's3://inputdir'
-    assert ds.config('DYESCORE_DATA_DIR') == 's3://outputdir'
+    assert ds.config('DYESCORE_DATA_DIR') == 's3://datadir'
+    assert ds.config('DYESCORE_RESULTS_DIR') == 's3://resultsdir'
     assert ds.config('AWS_ACCESS_KEY_ID') == 'jgdflkgjsld;gs'
     assert ds.config('AWS_SECRET_ACCESS_KEY') == 'dsil;guewort9q9vkdf/'
 
