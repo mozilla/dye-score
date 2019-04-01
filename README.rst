@@ -9,4 +9,9 @@ Dye Score
 
 Utilities to build the dye-score metric from OpenWPM_ javascript call data.
 
+
+* GitHub repo: https://github.com/mozilla/dye-score/
+* Documentation: https://dye-score.readthedocs.io/
+* Free software: Mozilla Public License
+
 .. _OpenWPM: https://github.com/mozilla/openwpm
