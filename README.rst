@@ -19,7 +19,7 @@ Utilities to build the dye-score metric from OpenWPM_ javascript call data.
 Quickstart
 ----------
 
-Install dye score: ``pip install dye-score``
+Install dye score: ``conda install dye-score -c conda-forge`` or ``pip install dye-score``
 
 Review usage notebook: https://github.com/mozilla/dye-score/blob/master/docs/usage.ipynb
 
