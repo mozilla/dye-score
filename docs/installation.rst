@@ -7,8 +7,7 @@ Installation
 Prerequisites
 -------------
 
-You will need `Apache Spark`_ available on your system. PySpark will be
-installed when you install dye_score.
+You will need `Apache Spark`_ including PySpark available on your system.
 
 
 Stable release
