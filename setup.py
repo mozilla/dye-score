@@ -9,14 +9,13 @@ with open('README.rst') as readme_file:
     readme = readme_file.read()
 
 requirements = [
-    'bokeh==1.0.4',
-    'dask[complete]==1.1.5',
+    'bokeh>=1.0.4',
+    'dask[complete]>=1.1.5',
     'numpy>=1.14',
     'pyarrow==0.12.1',
-    'pyspark==2.4.0',
     'pyyaml>=4.2b1',
-    'xarray==0.12.0',
-    'zarr==2.2.0',
+    'xarray>=0.12.0',
+    'zarr>=2.2.0',
 ]
 
 setup_requirements = ['pytest-runner', ]
