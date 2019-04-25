@@ -52,12 +52,14 @@ class DyeScore:
         config_file_path (str): The path of your config file that is used for dye score to interact with your
             environment.  Holds references to file paths and private data such as AWS API keys. Expects a YAML file with
             the following keys:
+
             * INPUT_PARQUET_LOCATION - the location of the raw or sampled OpenWPM input parquet folder
             * DYESCORE_DATA_DIR - location where you would like dye score to store data assets
             * DYESCORE_RESULTS_DIR - location where you would like dye score to store results assets
             * USE_AWS - default False - set true if data store is AWS
             * AWS_ACCESS_KEY_ID - optional - for storing and retrieving data on AWS
             * AWS_SECRET_ACCESS_KEY - optional - for storing and retrieving data on AWS
+
             Locations can be a local file path or a bucket.
         validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
         print_config (bool, optional): Print out config once saved. Defaults to ``True``.
