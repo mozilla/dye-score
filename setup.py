@@ -16,6 +16,7 @@ requirements = [
     'pyyaml>=4.2b1',
     'xarray>=0.12.0',
     'zarr>=2.2.0',
+    's3fs>=0.2.1',
 ]
 
 setup_requirements = ['pytest-runner', ]
