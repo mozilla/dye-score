@@ -370,8 +370,11 @@ class DyeScore:
         pivot_table = pivot_table.set_index('snippet')
 
         row_normalize = pivot_table.div(pivot_table.sum(axis=1), axis=0)
+        row_normalize_array = row_normalize.to_dask_array(lengths=True)
+        # xarray needs uniformly sized chunks
+        row_normalize_array = row_normalize_array.rechunk({0: 'auto', 1: -1})
         row_normalize_array = DataArray(
-                row_normalize.to_dask_array(lengths=True),
+                row_normalize_array,
                 dims=['snippet', 'symbol'],
                 coords={
                     'snippet': row_normalize.index.values,
