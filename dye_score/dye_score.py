@@ -348,7 +348,8 @@ class DyeScore:
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
-        tmp = self.dye_score_data_file('tmp.csv')
+        data_dir = self.config('DYESCORE_DATA_DIR')
+        tmp = os.path.join(data_dir, 'tmp.csv')
         if self.config('USE_AWS'):
             if self.s3.exists(tmp):
                 self.s3.rm(tmp, recursive=True)
