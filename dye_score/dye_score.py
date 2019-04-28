@@ -301,7 +301,7 @@ class DyeScore:
         snippet_lookup.to_parquet(outpath, **self.to_parquet_opts)
         return outpath
 
-    def _load_and_join_raw_data_to_snippets(self, spark, columns=[], override=False):
+    def _load_and_join_raw_data_to_snippets(self, spark, columns=[]):
         # File setup
         snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
         inpath = self.dye_score_data_file('raw_snippet_call_df')
@@ -348,7 +348,7 @@ class DyeScore:
 
         # Process - pivot with spark and save to tmp file
         df_to_pivot = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['symbol', 'called', 'raw_snippet'], override=override
+            spark, columns=['symbol', 'called', 'raw_snippet']
         )
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
@@ -412,7 +412,7 @@ class DyeScore:
 
         # Process
         df = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'], override=override
+            spark, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet']
         )
         get_clean_script_udf = udf(get_clean_script)
         df = df.withColumn('clean_script', get_clean_script_udf(df.script_url))
