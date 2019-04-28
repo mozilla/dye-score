@@ -338,13 +338,18 @@ class DyeScore:
         outpath = self.dye_score_data_file('snippets')
         self.file_out_validation(outpath, override)
 
+        # Get symbols
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
+        self.file_in_validation(inpath)
+        df = read_parquet(inpath, columns=['symbol'], **self.from_parquet_opts)
+        symbols = df.symbol.unique().compute()
+        symbols = sorted(list(symbols.values))
+        print(f'Dataset has {len(symbols)} unique symbols')
+
         # Process - pivot with spark and save to tmp file
         df_to_pivot = self._load_and_join_raw_data_to_snippets(
             spark, columns=['symbol', 'called', 'raw_snippet'], override=override
         )
-        symbols = df_to_pivot.select('symbol').distinct().toPandas()
-        symbols = sorted(list(symbols.symbol.values))
-        print(f'Dataset has {len(symbols)} unique symbols')
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
@@ -366,7 +371,7 @@ class DyeScore:
 
         row_normalize = pivot_table.div(pivot_table.sum(axis=1), axis=0)
         row_normalize_array = DataArray(
-                row_normalize,
+                row_normalize.to_dask_array(lengths=True),
                 dims=['snippet', 'symbol'],
                 coords={
                     'snippet': row_normalize.index.values,
