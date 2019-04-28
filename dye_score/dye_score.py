@@ -348,9 +348,13 @@ class DyeScore:
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
-        tmp = 'tmp.csv'
-        if os.path.exists(tmp):
-            shutil.rmtree(tmp)
+        tmp = self.dye_score_data_file('tmp.csv')
+        if self.config('USE_AWS'):
+            if self.s3.exists(tmp):
+                self.s3.rm(tmp, recursive=True)
+        else:
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
         pivot.write.csv(tmp, header=True)
 
         # Process - set_index, normalize and save to zarr
@@ -371,7 +375,10 @@ class DyeScore:
         print(row_normalize_array)
         row_normalize_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
         # Cleanup
-        shutil.rmtree(tmp)
+        if self.config('USE_AWS'):
+            self.s3.rm(tmp, recursive=True)
+        else:
+            shutil.rmtree(tmp)
         return outpath
 
     def build_snippet_snippet_dyeing_map(self, spark, override=False):
