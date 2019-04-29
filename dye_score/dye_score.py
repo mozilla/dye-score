@@ -301,22 +301,6 @@ class DyeScore:
         snippet_lookup.to_parquet(outpath, **self.to_parquet_opts)
         return outpath
 
-    def _load_and_join_raw_data_to_snippets(self, spark, columns=[]):
-        # File setup
-        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
-        inpath = self.dye_score_data_file('raw_snippet_call_df')
-        self.file_in_validation(snippet_map)
-        self.file_in_validation(inpath)
-
-        # Process - pivot with spark and save to tmp file
-        df_map = spark.read.parquet(snippet_map).select(['raw_snippet', 'snippet'])
-        df = spark.read.parquet(inpath)
-        if columns:
-            df = df.select(columns)
-        joined = df.join(df_map, on='raw_snippet')
-        joined = joined.drop('raw_snippet')
-        return joined
-
     def build_snippets(self, spark, override=False):
         """Builds row-normalized snippet dataset
 
@@ -324,6 +308,9 @@ class DyeScore:
         * Data is output in zarr format with processing by spark, dask, and xarray.
         * Creates an intermediate tmp file when converting from spark to dask.
         * Slow running operation - follow spark and dask status to see progress
+        
+        We use spark here because dask cannot memory efficiently compute a pivot
+        table. This is the only function we need spark context for.
 
         Args:
             spark (pyspark.sql.session.SparkSession): spark instance
@@ -333,10 +320,17 @@ class DyeScore:
             str. The file path where output is saved
         """
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+        print("""
+        This function uses both spark and dask, make sure you have workers 
+        available for both""")
 
         # File setup
         outpath = self.dye_score_data_file('snippets')
+        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
         self.file_out_validation(outpath, override)
+        self.file_in_validation(snippet_map)
+        self.file_in_validation(inpath)
 
         # Get symbols
         inpath = self.dye_score_data_file('raw_snippet_call_df')
@@ -347,9 +341,10 @@ class DyeScore:
         print(f'Dataset has {len(symbols)} unique symbols')
 
         # Process - pivot with spark and save to tmp file
-        df_to_pivot = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['symbol', 'called', 'raw_snippet']
-        )
+        df_map = spark.read.parquet(snippet_map).select(['raw_snippet', 'snippet'])
+        df = spark.read.parquet(inpath).select(['symbol', 'called', 'raw_snippet'])
+        df_to_pivot = df.join(df_map, on='raw_snippet')
+        df_to_pivot = df_to_pivot.drop('raw_snippet')
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
@@ -371,7 +366,8 @@ class DyeScore:
 
         row_normalize = pivot_table.div(pivot_table.sum(axis=1), axis=0)
         row_normalize_array = row_normalize.to_dask_array(lengths=True)
-        # xarray needs uniformly sized chunks
+
+        # - xarray needs uniformly sized chunks
         row_normalize_array = row_normalize_array.rechunk({0: 'auto', 1: -1})
         row_normalize_array = DataArray(
                 row_normalize_array,
@@ -390,7 +386,7 @@ class DyeScore:
             shutil.rmtree(tmp)
         return outpath
 
-    def build_snippet_snippet_dyeing_map(self, spark, override=False):
+    def build_snippet_snippet_dyeing_map(self, override=False):
         """Build file used to join snippets to data for dyeing.
 
         Adds clean_script field to dataset. Saves parquet file with:
@@ -407,20 +403,23 @@ class DyeScore:
             str. The file path where output is saved
 
         """
-        spark.conf.set("spark.sql.execution.arrow.enabled", "true")
 
         # File setup
         outpath = self.dye_score_data_file('snippet_dyeing_map')
+        snippet_map = ds.dye_score_data_file('raw_snippet_to_snippet_lookup')
+        inpath = ds.dye_score_data_file('raw_snippet_call_df')
         self.file_out_validation(outpath, override)
+        ds.file_in_validation(snippet_map)
+        ds.file_in_validation(inpath)
 
         # Process
-        df = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet']
-        )
-        get_clean_script_udf = udf(get_clean_script)
-        df = df.withColumn('clean_script', get_clean_script_udf(df.script_url))
-        df = df.dropDuplicates()
-        df.write.parquet(outpath, compression='snappy')
+        df_map = dd.read_parquet(snippet_map, columns=['snippet', 'raw_snippet'])
+        df = dd.read_parquet(inpath, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
+        df = df.merge(df_map, on='raw_snippet')
+        df = df.drop('raw_snippet', axis=1)
+        df['clean_script'] = df.script_url.apply(get_clean_script, meta='O')
+        df = df.drop_duplicates()
+        df.to_parquet(outpath, **self.to_parquet_opts)
         return outpath
 
     ##
