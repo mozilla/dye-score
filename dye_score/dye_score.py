@@ -413,8 +413,8 @@ class DyeScore:
         self.file_in_validation(inpath)
 
         # Process
-        df_map = dd.read_parquet(snippet_map, columns=['snippet', 'raw_snippet'])
-        df = dd.read_parquet(inpath, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
+        df_map = read_parquet(snippet_map, columns=['snippet', 'raw_snippet'], **self.from_parquet_opts)
+        df = read_parquet(inpath, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'], **self.from_parquet_opts)
         df = df.merge(df_map, on='raw_snippet')
         df = df.drop('raw_snippet', axis=1)
         df['clean_script'] = df.script_url.apply(get_clean_script, meta='O')
