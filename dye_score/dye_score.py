@@ -63,7 +63,7 @@ class DyeScore:
 
             Locations can be a local file path or a bucket.
         validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
-        print_config (bool, optional): Print out config once saved. Defaults to ``True``.
+        print_config (bool, optional): Print out config once saved. Defaults to ``False``.
     """
 
     __conf = {
@@ -322,7 +322,7 @@ class DyeScore:
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
         print("""
         This function uses both spark and dask, make sure you have workers 
-        available for both""")
+        available for both.""")
 
         # File setup
         outpath = self.dye_score_data_file('snippets')
@@ -386,7 +386,7 @@ class DyeScore:
             shutil.rmtree(tmp)
         return outpath
 
-    def build_snippet_snippet_dyeing_map(self, override=False):
+    def build_snippet_snippet_dyeing_map(self, spark, override=False):
         """Build file used to join snippets to data for dyeing.
 
         Adds clean_script field to dataset. Saves parquet file with:
@@ -403,6 +403,10 @@ class DyeScore:
             str. The file path where output is saved
 
         """
+        spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+        print("""
+        This function uses both spark and dask, make sure you have workers 
+        available for both.""")
 
         # File setup
         outpath = self.dye_score_data_file('snippet_dyeing_map')
@@ -412,15 +416,36 @@ class DyeScore:
         self.file_in_validation(snippet_map)
         self.file_in_validation(inpath)
 
+        data_dir = self.config('DYESCORE_DATA_DIR')
+        tmp = os.path.join(data_dir, 'tmp.parquet')
+        if self.config('USE_AWS'):
+            if self.s3.exists(tmp):
+                self.s3.rm(tmp, recursive=True)
+        else:
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
+
         # Process
-        df_map = read_parquet(snippet_map, columns=['snippet', 'raw_snippet'], **self.from_parquet_opts)
-        df = read_parquet(inpath, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'], **self.from_parquet_opts)
+        # - use spark to drop duplicates
+        df = spark.read.parquet(inpath).select(['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
         df = df.drop_duplicates()
-        df = df.persist()
+        df = df.coalesce(40)
+        df = df.write.parquet(tmp)
+
+        # - merge snippets in
+        df = read_parquet(tmp + '/*.parquet', **self.from_parquet_opts)
         df['clean_script'] = df.script_url.apply(get_clean_script, meta='O')
+        df_map = read_parquet(snippet_map, columns=['snippet', 'raw_snippet'], **self.from_parquet_opts)
         df = df.merge(df_map, on='raw_snippet')
         df = df.drop('raw_snippet', axis=1)
         df.to_parquet(outpath, **self.to_parquet_opts)
+
+        # Cleanup
+        if self.config('USE_AWS'):
+            self.s3.rm(tmp, recursive=True)
+        else:
+            shutil.rmtree(tmp)
+
         return outpath
 
     ##
