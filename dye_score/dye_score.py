@@ -406,11 +406,11 @@ class DyeScore:
 
         # File setup
         outpath = self.dye_score_data_file('snippet_dyeing_map')
-        snippet_map = ds.dye_score_data_file('raw_snippet_to_snippet_lookup')
-        inpath = ds.dye_score_data_file('raw_snippet_call_df')
+        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
         self.file_out_validation(outpath, override)
-        ds.file_in_validation(snippet_map)
-        ds.file_in_validation(inpath)
+        self.file_in_validation(snippet_map)
+        self.file_in_validation(inpath)
 
         # Process
         df_map = dd.read_parquet(snippet_map, columns=['snippet', 'raw_snippet'])
