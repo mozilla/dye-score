@@ -144,7 +144,7 @@ class DyeScore:
 
     def get_zarr_store(self, file_path):
         if self.config('USE_AWS') is True:
-            return S3Map(root=file_path, s3=self.s3)
+            return S3Map(root=file_path.lstrip('s3://'), s3=self.s3)
         else:
             return file_path
 
@@ -369,7 +369,7 @@ class DyeScore:
 
         # - xarray needs uniformly sized chunks
         row_normalize_array = row_normalize_array.rechunk({0: 'auto', 1: -1})
-        row_normalize_array = DataArray(
+        data_array = DataArray(
                 row_normalize_array,
                 dims=['snippet', 'symbol'],
                 coords={
@@ -377,8 +377,9 @@ class DyeScore:
                     'symbol': row_normalize.columns
                 }
         )
-        print(row_normalize_array)
-        row_normalize_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+        print(data_array)
+        data_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+
         # Cleanup
         if self.config('USE_AWS'):
             self.s3.rm(tmp, recursive=True)
