@@ -453,7 +453,7 @@ class DyeScore:
     # Dyeing and Scoring
     ##
 
-    def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False):
+    def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False, snippet_chunksize=1000, dye_snippet_chunksize=1000):
         """Computes all pairwise distances from dye snippets to all other snippets.
 
         * Expects snippets file to exist.
@@ -481,11 +481,11 @@ class DyeScore:
         # Process distances
         df = open_zarr(store=self.get_zarr_store(snippet_file))['data']
         df = df.chunk({'symbol': -1})
-        df_c = df.chunk({'snippet': 10_000})
+        df_c = df.chunk({'snippet': snippet_chunksize})
 
         df_dye = df.loc[{'snippet': dye_snippets}]
         df_dye = df_dye.rename({'snippet': 'dye_snippet'})
-        df_dye_c = df_dye.chunk({'dye_snippet': 100})
+        df_dye_c = df_dye.chunk({'dye_snippet': dye_snippet_chunksize})
 
         distance_array = apply_ufunc(
             get_chebyshev_distances_xarray_ufunc,
