@@ -574,6 +574,7 @@ class DyeScore:
 
         outpaths = []
         for threshold in thresholds:
+            print(f'Running threshold {threshold}')
             inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
             outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
             self.file_in_validation(inpath)
@@ -583,7 +584,7 @@ class DyeScore:
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
-            script_to_dye_max.compute().to_csv(outpath, compression='gzip', storage_options=self.s3_storage_options)
+            script_to_dye_max.to_csv(outpath, compression='gzip', storage_options=self.s3_storage_options)
             outpaths.append(outpath)
         return outpaths
 
