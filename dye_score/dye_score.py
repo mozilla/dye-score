@@ -100,6 +100,7 @@ class DyeScore:
             self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
             use_aws = config.get('USE_AWS', False)
             self.__conf['USE_AWS'] = bool(use_aws)
+            self.__conf['S3_PROTOCOL'] = config.get('S3_PROTOCOL', 's3')
             self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
             self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
         if print_config is True:
@@ -144,7 +145,7 @@ class DyeScore:
 
     def get_zarr_store(self, file_path):
         if self.config('USE_AWS') is True:
-            return S3Map(root=file_path.lstrip('s3://'), s3=self.s3)
+            return S3Map(root=file_path.lstrip('{self.config("S3_PROTOCOL")}://'), s3=self.s3)
         else:
             return file_path
 
@@ -165,8 +166,9 @@ class DyeScore:
         Raises AssertionError if values are incorrect.
         """
         if self.config('USE_AWS') is True:
-            assert self.config('INPUT_PARQUET_LOCATION').startswith('s3://')
-            assert self.config('DYESCORE_DATA_DIR').startswith('s3://')
+            s3_protocol = self.config('S3_PROTOCOL')
+            assert self.config('INPUT_PARQUET_LOCATION').startswith(f'{s3_protocol}://')
+            assert self.config('DYESCORE_DATA_DIR').startswith(f'{s3_protocol}://')
 
     def dye_score_data_file(self, filename):
         """Helper function to return standardized filename.
