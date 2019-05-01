@@ -99,6 +99,7 @@ class DyeScore:
             self.__conf['INPUT_PARQUET_LOCATION'] = config['INPUT_PARQUET_LOCATION']
             self.__conf['DYESCORE_DATA_DIR'] = config['DYESCORE_DATA_DIR']
             self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
+            self.__conf['TMP_DIR'] = config.get('TMP_DIR', config['DYESCORE_DATA_DIR'])  # Default to data dir if not provided
             use_aws = config.get('USE_AWS', False)
             self.__conf['USE_AWS'] = bool(use_aws)
             self.__conf['SPARK_S3_PROTOCOL'] = config.get('SPARK_S3_PROTOCOL', 's3')
@@ -363,8 +364,8 @@ class DyeScore:
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
-        data_dir = self.config('DYESCORE_DATA_DIR')
-        tmp = os.path.join(data_dir, 'tmp.csv')
+        tmp_dir = self.config('TMP_DIR')
+        tmp = os.path.join(tmp_dir, 'tmp.csv')
         if self.config('USE_AWS'):
             if self.s3.exists(tmp):
                 self.s3.rm(tmp, recursive=True)
@@ -432,8 +433,8 @@ class DyeScore:
         self.file_in_validation(snippet_map)
         self.file_in_validation(inpath)
 
-        data_dir = self.config('DYESCORE_DATA_DIR')
-        tmp = os.path.join(data_dir, 'tmp.parquet')
+        tmp_dir = self.config('TMP_DIR')
+        tmp = os.path.join(tmp_dir, 'tmp.parquet')
         if self.config('USE_AWS'):
             if self.s3.exists(tmp):
                 self.s3.rm(tmp, recursive=True)
