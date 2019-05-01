@@ -101,7 +101,7 @@ class DyeScore:
             self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
             use_aws = config.get('USE_AWS', False)
             self.__conf['USE_AWS'] = bool(use_aws)
-            self.__conf['S3_PROTOCOL'] = config.get('S3_PROTOCOL', 's3')
+            self.__conf['SPARK_S3_PROTOCOL'] = config.get('SPARK_S3_PROTOCOL', 's3')
             self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
             self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
         if print_config:
@@ -112,7 +112,7 @@ class DyeScore:
             self.s3 = S3FileSystem(**self.s3_storage_options)
         else:
             self.s3 = None
-        if sc and use_aws and self.config('S3_PROTOCOL') == 's3a':
+        if sc and use_aws and self.config('SPARK_S3_PROTOCOL') == 's3a':
             sc._jsc.hadoopConfiguration().set('fs.s3a.access.key', self.config('AWS_ACCESS_KEY_ID'))
             sc._jsc.hadoopConfiguration().set('fs.s3a.secret.key', self.config('AWS_SECRET_ACCESS_KEY'))
 
@@ -149,7 +149,7 @@ class DyeScore:
 
     def get_zarr_store(self, file_path):
         if self.config('USE_AWS') is True:
-            return S3Map(root=file_path.lstrip('{self.config("S3_PROTOCOL")}://'), s3=self.s3)
+            return S3Map(root=file_path.lstrip('s3://'), s3=self.s3)
         else:
             return file_path
 
@@ -170,9 +170,8 @@ class DyeScore:
         Raises AssertionError if values are incorrect.
         """
         if self.config('USE_AWS') is True:
-            s3_protocol = self.config('S3_PROTOCOL')
-            assert self.config('INPUT_PARQUET_LOCATION').startswith(f'{s3_protocol}://')
-            assert self.config('DYESCORE_DATA_DIR').startswith(f'{s3_protocol}://')
+            assert self.config('INPUT_PARQUET_LOCATION').startswith(f's3://')
+            assert self.config('DYESCORE_DATA_DIR').startswith(f's3://')
 
     def dye_score_data_file(self, filename):
         """Helper function to return standardized filename.
@@ -198,6 +197,12 @@ class DyeScore:
             assert column in df.columns, f'{column} missing from df.columns ({df.columns})'
             assert df[column].dtype == 'object', f'{column} does not have dtype `object`'
         return True
+
+    def spark_convert(self, path):
+        if self.config('USE_AWS') and self.config('SPARK_S3_PROTOCOL') == 's3a':
+            return path.replace('s3://', 's3a://')
+        else:
+            return path
 
     def get_input_df(self, columns=None):
         """Helper function to return the input dataframe.
@@ -345,6 +350,10 @@ class DyeScore:
         symbols = df.symbol.unique().compute()
         symbols = sorted(list(symbols.values))
         print(f'Dataset has {len(symbols)} unique symbols')
+        
+        # Setup spark files
+        snippet_map = self.spark_convert(snippet_map)
+        inpath = self.spark_convert(inpath)
 
         # Process - pivot with spark and save to tmp file
         df_map = spark.read.parquet(snippet_map).select(['raw_snippet', 'snippet'])
@@ -362,7 +371,7 @@ class DyeScore:
         else:
             if os.path.exists(tmp):
                 shutil.rmtree(tmp)
-        pivot.write.csv(tmp, header=True)
+        pivot.write.csv(self.spark_convert(tmp), header=True)
 
         # Process - set_index, normalize and save to zarr
         dtypes = {symbol: 'float64' for symbol in symbols}
@@ -434,10 +443,10 @@ class DyeScore:
 
         # Process
         # - use spark to drop duplicates
-        df = spark.read.parquet(inpath).select(['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
+        df = spark.read.parquet(self.spark_convert(inpath)).select(['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
         df = df.drop_duplicates()
         df = df.coalesce(40)
-        df = df.write.parquet(tmp)
+        df = df.write.parquet(self.spark_convert(tmp))
 
         # - merge snippets in
         df = read_parquet(tmp + '/*.parquet', **self.from_parquet_opts)
