@@ -64,6 +64,7 @@ class DyeScore:
             Locations can be a local file path or a bucket.
         validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
         print_config (bool, optional): Print out config once saved. Defaults to ``False``.
+        sc (SparkContext, optional): If accessing s3 via s3a, pass spark context to set aws credentials
     """
 
     __conf = {
@@ -89,7 +90,7 @@ class DyeScore:
         'snippet_dyeing_map': 'snippet_dyeing_map.parquet',
     }
 
-    def __init__(self, config_file_path, validate_config=True, print_config=True):
+    def __init__(self, config_file_path, validate_config=True, print_config=False, sc=None):
         if not os.path.exists(config_file_path):
             raise ValueError(f'config_file_path `{config_file_path}` not found')
 
@@ -103,14 +104,17 @@ class DyeScore:
             self.__conf['S3_PROTOCOL'] = config.get('S3_PROTOCOL', 's3')
             self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
             self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
-        if print_config is True:
+        if print_config:
             pprint(self.__conf)
-        if validate_config is True:
+        if validate_config:
             self.validate_config()
-        if use_aws is True:
+        if use_aws:
             self.s3 = S3FileSystem(**self.s3_storage_options)
         else:
             self.s3 = None
+        if sc and use_aws and self.config('S3_PROTOCOL') == 's3a':
+            sc._jsc.hadoopConfiguration().set('fs.s3a.access.key', self.config('AWS_ACCESS_KEY_ID'))
+            sc._jsc.hadoopConfiguration().set('fs.s3a.secret.key', self.config('AWS_SECRET_ACCESS_KEY'))
 
     @property
     def s3_storage_options(self):
