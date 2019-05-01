@@ -366,7 +366,7 @@ class DyeScore:
 
         tmp_dir = self.config('TMP_DIR')
         tmp = os.path.join(tmp_dir, 'tmp.csv')
-        if self.config('USE_AWS'):
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
             if self.s3.exists(tmp):
                 self.s3.rm(tmp, recursive=True)
         else:
@@ -397,7 +397,7 @@ class DyeScore:
         data_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
 
         # Cleanup
-        if self.config('USE_AWS'):
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
             self.s3.rm(tmp, recursive=True)
         else:
             shutil.rmtree(tmp)
@@ -435,7 +435,7 @@ class DyeScore:
 
         tmp_dir = self.config('TMP_DIR')
         tmp = os.path.join(tmp_dir, 'tmp.parquet')
-        if self.config('USE_AWS'):
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
             if self.s3.exists(tmp):
                 self.s3.rm(tmp, recursive=True)
         else:
@@ -458,7 +458,7 @@ class DyeScore:
         df.to_parquet(outpath, **self.to_parquet_opts)
 
         # Cleanup
-        if self.config('USE_AWS'):
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
             self.s3.rm(tmp, recursive=True)
         else:
             shutil.rmtree(tmp)
