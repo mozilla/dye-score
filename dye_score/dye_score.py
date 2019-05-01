@@ -376,7 +376,7 @@ class DyeScore:
         # Process - set_index, normalize and save to zarr
         dtypes = {symbol: 'float64' for symbol in symbols}
         dtypes['snippet'] = 'object'
-        pivot_table = read_csv(f'{tmp}/*.csv', dtype=dtypes)
+        pivot_table = read_csv(f'{tmp}/*.csv', dtype=dtypes, storage_options=self.s3_storage_options)
         pivot_table = pivot_table.set_index('snippet')
 
         row_normalize = pivot_table.div(pivot_table.sum(axis=1), axis=0)
