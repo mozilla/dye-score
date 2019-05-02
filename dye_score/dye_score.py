@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import datetime
 import os
 import numpy as np
 import shutil
@@ -11,7 +12,7 @@ from dask.dataframe import (
 )
 from pandas import (
     DataFrame as pd_DataFrame,
-    read_csv as pd_read_csv,
+    read_csv as pd_read_csv
 )
 from pprint import pprint
 from s3fs import S3FileSystem, S3Map
@@ -109,13 +110,14 @@ class DyeScore:
             pprint(self.__conf)
         if validate_config:
             self.validate_config()
-        if use_aws:
-            self.s3 = S3FileSystem(**self.s3_storage_options)
-        else:
-            self.s3 = None
         if sc and use_aws and self.config('SPARK_S3_PROTOCOL') == 's3a':
             sc._jsc.hadoopConfiguration().set('fs.s3a.access.key', self.config('AWS_ACCESS_KEY_ID'))
             sc._jsc.hadoopConfiguration().set('fs.s3a.secret.key', self.config('AWS_SECRET_ACCESS_KEY'))
+
+    @property
+    def s3(self):
+        if self.config('USE_AWS'):
+            return S3FileSystem(**self.s3_storage_options)
 
     @property
     def s3_storage_options(self):
@@ -574,9 +576,9 @@ class DyeScore:
 
         outpaths = []
         for threshold in thresholds:
-            print(f'Running threshold {threshold}')
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
-            outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
+            outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             self.file_in_validation(inpath)
             self.file_out_validation(outpath, override)
 
@@ -584,7 +586,8 @@ class DyeScore:
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
-            script_to_dye_max.to_csv(outpath, compression='gzip', storage_options=self.s3_storage_options)
+            with self.s3.open(outpath, 'w') as f:
+                script_to_dye_max.compute().to_csv(f)
             outpaths.append(outpath)
         return outpaths
 
@@ -625,12 +628,15 @@ class DyeScore:
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
         outpaths = []
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
-            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv.gz')
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
+            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
+            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
             self.file_in_validation(inpath)
             self.file_out_validation(outpath, override)
-            dye_score_df = pd_read_csv(inpath, storage_options=self.s3_storage_options)
+            with self.s3.open(inpath, 'r') as f:
+                dye_score_df = pd_read_csv(f)
             plot_df = self._build_plot_data_for_score_df(dye_score_df, compare_list)
-            plot_df.to_csv(outpath, compression='gzip', index=False, storage_options=self.s3_storage_options)
+            with self.s3.open(outpath, 'w') as f:
+                plot_df.to_csv(f, index=False)
             outpaths.append(outpath)
         return outpaths
