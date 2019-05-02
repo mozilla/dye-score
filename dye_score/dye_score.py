@@ -41,7 +41,7 @@ def get_raw_snippet_from_row(row):
     script_url = row.script_url
     func_name = row.func_name
     if script_url == '':
-        script_url = row.top_level_url
+        script_url = row.document_url
     netloc = get_netloc(script_url)
     path = get_path(script_url)
     path_end = get_end_of_path(path)
@@ -79,6 +79,7 @@ class DyeScore:
 
     dye_score_columns = [
         'top_level_url',
+        'document_url',
         'script_url',
         'func_name',
         'symbol',
@@ -410,7 +411,7 @@ class DyeScore:
 
         Adds clean_script field to dataset. Saves parquet file with:
             * snippet - the int version, not raw_snippet
-            * top_level_url
+            * document_url
             * script_url
             * clean_script
 
@@ -446,7 +447,7 @@ class DyeScore:
 
         # Process
         # - use spark to drop duplicates
-        df = spark.read.parquet(self.spark_convert(inpath)).select(['top_level_url', 'script_url', 'func_name', 'raw_snippet'])
+        df = spark.read.parquet(self.spark_convert(inpath)).select(['top_level_url', 'document_url', 'script_url', 'func_name', 'raw_snippet'])
         df = df.drop_duplicates()
         df = df.coalesce(40)
         df = df.write.parquet(self.spark_convert(tmp))
