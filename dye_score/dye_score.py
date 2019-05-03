@@ -543,6 +543,7 @@ class DyeScore:
 
         outpaths = []
         for threshold in thresholds:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             n_to_dye = np.sum(distance_array < threshold, axis=0).persist()
             non_leaky_sites = n_to_dye[n_to_dye < N_LEAKY_THRESHOLD].coords.to_index()
             distance_array_filtered = distance_array.loc[{'dye_snippet': non_leaky_sites}]
