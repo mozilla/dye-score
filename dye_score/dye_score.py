@@ -517,6 +517,24 @@ class DyeScore:
         distance_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
         return outpath
 
+    def _validate_thresholds(self, thresholds, resultsdir, filename_pattern, filename_suffix, override):
+        thresholds_to_run = []
+        existing_outpaths = []
+        # If override is False, don't fail out, check
+        # all thresholds and run those that don't have values
+        for threshold in thresholds:
+            outpath = os.path.join(
+                resultsdir, 
+                filename_pattern.format({'suff':filename_suffix, 't': threshold})
+            )
+            try:
+                self.file_out_validation(outpath, override)
+                thresholds_to_run.append(threshold)
+            except ValueError as e:
+                print(f'Threshold {threshold} exists, skipping.')
+                existing_outpaths.append(outpath)
+        return thresholds_to_run, existing_outpaths
+
     def compute_snippets_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
         """Get score for snippets for a range of distance thresholds.
 
@@ -535,14 +553,20 @@ class DyeScore:
         file_name = f'snippets_dye_distances_from_{filename_suffix}'
         inpath = os.path.join(resultsdir, file_name)
         self.file_in_validation(inpath)
-        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
 
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'snippets_score_from_{suff}_{t}', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
         LEAKY_THRESHOLD = 0.2
         n_sites = distance_array.shape[0]
         N_LEAKY_THRESHOLD = LEAKY_THRESHOLD * n_sites
 
         outpaths = []
-        for threshold in thresholds:
+        for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             n_to_dye = np.sum(distance_array < threshold, axis=0).persist()
             non_leaky_sites = n_to_dye[n_to_dye < N_LEAKY_THRESHOLD].coords.to_index()
@@ -553,9 +577,9 @@ class DyeScore:
             site_counts_df = site_counts_df.reset_index().rename(columns={'data': 'dye_count'})
             site_counts_df['snippet'] = site_counts_df.snippet.astype(int)
             outpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
-            self.file_out_validation(outpath, override)
             from_pandas(site_counts_df, npartitions=1).to_parquet(outpath, **self.to_parquet_opts)
             outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
         return outpaths
 
     def compute_dye_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
@@ -572,17 +596,27 @@ class DyeScore:
         Returns:
             list. Paths results were written to
         """
-        snippet_dyeing_map_file = self.dye_score_data_file('snippet_dyeing_map')
-        snippet_data = read_parquet(snippet_dyeing_map_file, **self.from_parquet_opts)
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
 
-        outpaths = []
         for threshold in thresholds:
+            inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
+            self.file_in_validation(inpath)
+
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'dye_score_from_{suff}_{t}.csv', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        snippet_dyeing_map_file = self.dye_score_data_file('snippet_dyeing_map')
+        self.file_in_validation(snippet_dyeing_map_file)
+        snippet_data = read_parquet(snippet_dyeing_map_file, **self.from_parquet_opts)
+
+        outpaths = []
+        for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
             outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
-            self.file_in_validation(inpath)
-            self.file_out_validation(outpath, override)
 
             site_counts_df = read_parquet(inpath, **self.from_parquet_opts)
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
@@ -591,6 +625,7 @@ class DyeScore:
             with self.s3.open(outpath, 'w') as f:
                 script_to_dye_max.compute().to_csv(f)
             outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
         return outpaths
 
     ##
@@ -628,8 +663,19 @@ class DyeScore:
             list. Paths results were written to
         """
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
-        outpaths = []
         for threshold in thresholds:
+            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
+            self.file_in_validation(inpath)
+
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}.csv', filename_suffix, override
+        )
+
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        outpaths = []
+        for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
@@ -641,4 +687,5 @@ class DyeScore:
             with self.s3.open(outpath, 'w') as f:
                 plot_df.to_csv(f, index=False)
             outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
         return outpaths
