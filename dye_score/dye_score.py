@@ -525,7 +525,7 @@ class DyeScore:
         for threshold in thresholds:
             outpath = os.path.join(
                 resultsdir, 
-                filename_pattern.format({'suff':filename_suffix, 't': threshold})
+                filename_pattern.format(suff=filename_suffix, t=threshold)
             )
             try:
                 self.file_out_validation(outpath, override)
