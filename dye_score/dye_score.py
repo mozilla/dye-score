@@ -677,15 +677,15 @@ class DyeScore:
         else:
             return np.NaN
 
-    def _build_plot_data_for_score_df(self, inpath, outpath, compare_list):
-        with self.s3.open(inpath, 'r') as f:
+    def _build_plot_data_for_score_df(self, s3, inpath, outpath, compare_list):
+        with s3.open(inpath, 'r') as f:
             score_df = pd_read_csv(f)
         pr = pd_DataFrame({'dye_score_threshold': np.linspace(0, score_df.dye_score.max(), 1000)})
         pr['recall'] = pr.dye_score_threshold.apply(
             self._get_recall, score_df=score_df, compare_list=compare_list
         )
         pr['n_over_threshold'] = pr.dye_score_threshold.apply(lambda x: (score_df.dye_score > x).sum())
-        with self.s3.open(outpath, 'w') as f:
+        with s3.open(outpath, 'w') as f:
             pr.to_csv(f, index=False)
         return outpath
 
@@ -722,8 +722,9 @@ class DyeScore:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
-            delayed_func = delayed(self._build_plot_data_for_score_df)
-            futures.append(delayed(inpath, outpath, compare_list))
-        outpaths = compute(futures)
+            futures.append(
+                delayed(self._build_plot_data_for_score_df)(self.s3, inpath, outpath, compare_list)
+            )
+        outpaths = list(compute(futures))
         outpaths.extend(existing_outpaths)
         return outpaths
