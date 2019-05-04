@@ -37,6 +37,7 @@ def test_data_validation_with_valid_file(tmpdir, sample_config):
     config_file = os.path.join(tmpdir, 'config.yaml')
     df = pd.DataFrame({
         'top_level_url': ['a', 'b'],
+        'document_url': ['a', 'b'],
         'script_url': ['c', 'd'],
         'symbol': ['e', 'f'],
         'func_name': ['g', 'h']

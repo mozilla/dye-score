@@ -5,6 +5,7 @@ from bokeh.models import (
     Range1d,
 )
 from bokeh.plotting import figure
+from numpy import histogram
 
 def plot_hist(title, hist, edges, y_axis_type='linear', bottom=0):
     p = figure(title=title, tools='', background_fill_color="#fafafa", y_axis_type=y_axis_type, width=800, height=400)
@@ -14,7 +15,7 @@ def plot_hist(title, hist, edges, y_axis_type='linear', bottom=0):
     return p
 
 def plot_key_leaky(percent_to_dye, key, y_axis_type='linear', bottom=0):
-    hist, edges = np.histogram(percent_to_dye, bins=40)
+    hist, edges = histogram(percent_to_dye, bins=40)
     p = plot_hist(f'Distribution of leaky - {key}', hist, edges, y_axis_type=y_axis_type, bottom=bottom)
     p.width = 400
     p.height = 300
