@@ -725,6 +725,6 @@ class DyeScore:
             futures.append(
                 delayed(self._build_plot_data_for_score_df)(self.s3, inpath, outpath, compare_list)
             )
-        outpaths = list(compute(futures))
+        outpaths = list(compute(futures))[0]
         outpaths.extend(existing_outpaths)
         return outpaths
