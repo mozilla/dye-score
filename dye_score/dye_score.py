@@ -5,6 +5,7 @@ import numpy as np
 import shutil
 import yaml
 
+from dask import delayed, compute
 from dask.dataframe import (
     from_pandas,
     read_csv,
@@ -676,13 +677,17 @@ class DyeScore:
         else:
             return np.NaN
 
-    def _build_plot_data_for_score_df(self, score_df, compare_list):
+    def _build_plot_data_for_score_df(self, inpath, outpath, compare_list):
+        with self.s3.open(inpath, 'r') as f:
+            score_df = pd_read_csv(f)
         pr = pd_DataFrame({'dye_score_threshold': np.linspace(0, score_df.dye_score.max(), 1000)})
         pr['recall'] = pr.dye_score_threshold.apply(
             self._get_recall, score_df=score_df, compare_list=compare_list
         )
         pr['n_over_threshold'] = pr.dye_score_threshold.apply(lambda x: (score_df.dye_score > x).sum())
-        return pr
+        with self.s3.open(outpath, 'w') as f:
+            pr.to_csv(f, index=False)
+        return outpath
 
     def build_plot_data_for_thresholds(self, compare_list, thresholds, filename_suffix='dye_snippets', override=False):
         """Builds a dataframe for evaluation
@@ -699,29 +704,26 @@ class DyeScore:
             list. Paths results were written to
         """
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
+        
+        # Infile validation
         for threshold in thresholds:
             inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             self.file_in_validation(inpath)
-
+       
+        # Outfile validation
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
             thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}.csv', filename_suffix, override
         )
-
         if len(thresholds_to_run) == 0:
             return existing_outpaths
 
-        outpaths = []
+        futures = []
         for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
-            self.file_in_validation(inpath)
-            self.file_out_validation(outpath, override)
-            with self.s3.open(inpath, 'r') as f:
-                dye_score_df = pd_read_csv(f)
-            plot_df = self._build_plot_data_for_score_df(dye_score_df, compare_list)
-            with self.s3.open(outpath, 'w') as f:
-                plot_df.to_csv(f, index=False)
-            outpaths.append(outpath)
+            delayed_func = delayed(self._build_plot_data_for_score_df)
+            futures.append(delayed(inpath, outpath, compare_list))
+        outpaths = compute(futures)
         outpaths.extend(existing_outpaths)
         return outpaths
