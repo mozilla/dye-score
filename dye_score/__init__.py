@@ -4,6 +4,6 @@ from .dye_score import DyeScore
 
 __author__ = """Sarah Bird"""
 __email__ = 'fx-data-dev@mozilla.org'
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 __all__ = ['DyeScore']
