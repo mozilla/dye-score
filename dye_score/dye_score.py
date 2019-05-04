@@ -535,14 +535,49 @@ class DyeScore:
                 existing_outpaths.append(outpath)
         return thresholds_to_run, existing_outpaths
 
-    def compute_snippets_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
+    def compute_leaky_snippet_data(self, thresholds_to_test, override=False):
+        """Compute leaky percentages for a range of thresholds. This enables user
+        to select the "leaky threshold" for following rounds.
+
+        * Writes results to parquet files with name ``leak_test_{threshold}``
+
+        Args:
+            thresholds_to_test (list): List of distances to compute percentage of snippets dyed at for e.g. ``[0.23, 0.24, 0.25]``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            list. Paths results were written to
+        """
+        resultsdir = self.config('DYESCORE_RESULTS_DIR')
+        file_name = f'snippets_dye_distances_from_{filename_suffix}'
+        inpath = os.path.join(resultsdir, file_name)
+        self.file_in_validation(inpath)
+
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds_to_test, resultsdir, 'leak_test{suff}_{t}', '', override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
+        n_snippets = len(distance_array.coords['snippet'])
+        outpaths = []
+        for threshold in thresholds_to_run:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
+            percent_to_dye = (distance_array < threshold).sum(dim='snippet') / n_snippets
+            outpath = os.path.join(resultsdir, f'leak_test_{threshold}')
+            percent_to_dye.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+            outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
+        return outpaths
+
+    def compute_snippets_scores_for_thresholds(self, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False):
         """Get score for snippets for a range of distance thresholds.
 
-        * Uses hard coded leaky threshold of 20%
         * Writes results to parquet files with name ``snippets_score_from_{filename_suffix}_{threshold}``
 
         Args:
             thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            leaky_threshold (float): Remove all snippets which dye more than this fraction of all other snippets.
             filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
                 ``dye_snippets``
             override (bool, optional): Override output files. Defaults to ``False``.
@@ -561,15 +596,14 @@ class DyeScore:
             return existing_outpaths
 
         distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
-        LEAKY_THRESHOLD = 0.2
         n_sites = distance_array.shape[0]
-        N_LEAKY_THRESHOLD = LEAKY_THRESHOLD * n_sites
+        n_leaky_threshold = leaky_threshold * n_sites
 
         outpaths = []
         for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             n_to_dye = np.sum(distance_array < threshold, axis=0).persist()
-            non_leaky_sites = n_to_dye[n_to_dye < N_LEAKY_THRESHOLD].coords.to_index()
+            non_leaky_sites = n_to_dye[n_to_dye < n_leaky_threshold].coords.to_index()
             distance_array_filtered = distance_array.loc[{'dye_snippet': non_leaky_sites}]
 
             site_counts = np.sum(distance_array_filtered < threshold, axis=1)
