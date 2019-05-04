@@ -535,14 +535,16 @@ class DyeScore:
                 existing_outpaths.append(outpath)
         return thresholds_to_run, existing_outpaths
 
-    def compute_leaky_snippet_data(self, thresholds_to_test, override=False):
+    def compute_leaky_snippet_data(self, thresholds_to_test, filename_suffix='dye_snippets', override=False):
         """Compute leaky percentages for a range of thresholds. This enables user
         to select the "leaky threshold" for following rounds.
 
-        * Writes results to parquet files with name ``leak_test_{threshold}``
+        * Writes results to parquet files with name ``leak_test_{filename_suffix}_{threshold}``
 
         Args:
             thresholds_to_test (list): List of distances to compute percentage of snippets dyed at for e.g. ``[0.23, 0.24, 0.25]``
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
             override (bool, optional): Override output files. Defaults to ``False``.
         Returns:
             list. Paths results were written to
@@ -553,7 +555,7 @@ class DyeScore:
         self.file_in_validation(inpath)
 
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
-            thresholds_to_test, resultsdir, 'leak_test{suff}_{t}', '', override
+            thresholds_to_test, resultsdir, 'leak_test_{suff}_{t}', filename_suffix, override
         )
         if len(thresholds_to_run) == 0:
             return existing_outpaths
@@ -564,7 +566,7 @@ class DyeScore:
         for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             percent_to_dye = (distance_array < threshold).sum(dim='snippet') / n_snippets
-            outpath = os.path.join(resultsdir, f'leak_test_{threshold}')
+            outpath = os.path.join(resultsdir, f'leak_test_{filename_suffix}_{threshold}')
             percent_to_dye.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
             outpaths.append(outpath)
         outpaths.extend(existing_outpaths)
