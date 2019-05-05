@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+import datetime
 import os
 import numpy as np
 import shutil
 import yaml
 
+from dask import delayed, compute
 from dask.dataframe import (
     from_pandas,
     read_csv,
@@ -11,7 +13,7 @@ from dask.dataframe import (
 )
 from pandas import (
     DataFrame as pd_DataFrame,
-    read_csv as pd_read_csv,
+    read_csv as pd_read_csv
 )
 from pprint import pprint
 from s3fs import S3FileSystem, S3Map
@@ -40,7 +42,7 @@ def get_raw_snippet_from_row(row):
     script_url = row.script_url
     func_name = row.func_name
     if script_url == '':
-        script_url = row.top_level_url
+        script_url = row.document_url
     netloc = get_netloc(script_url)
     path = get_path(script_url)
     path_end = get_end_of_path(path)
@@ -63,7 +65,8 @@ class DyeScore:
 
             Locations can be a local file path or a bucket.
         validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
-        print_config (bool, optional): Print out config once saved. Defaults to ``True``.
+        print_config (bool, optional): Print out config once saved. Defaults to ``False``.
+        sc (SparkContext, optional): If accessing s3 via s3a, pass spark context to set aws credentials
     """
 
     __conf = {
@@ -77,6 +80,7 @@ class DyeScore:
 
     dye_score_columns = [
         'top_level_url',
+        'document_url',
         'script_url',
         'func_name',
         'symbol',
@@ -89,7 +93,7 @@ class DyeScore:
         'snippet_dyeing_map': 'snippet_dyeing_map.parquet',
     }
 
-    def __init__(self, config_file_path, validate_config=True, print_config=True):
+    def __init__(self, config_file_path, validate_config=True, print_config=False, sc=None):
         if not os.path.exists(config_file_path):
             raise ValueError(f'config_file_path `{config_file_path}` not found')
 
@@ -98,18 +102,24 @@ class DyeScore:
             self.__conf['INPUT_PARQUET_LOCATION'] = config['INPUT_PARQUET_LOCATION']
             self.__conf['DYESCORE_DATA_DIR'] = config['DYESCORE_DATA_DIR']
             self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
+            self.__conf['TMP_DIR'] = config.get('TMP_DIR', config['DYESCORE_DATA_DIR'])  # Default to data dir if not provided
             use_aws = config.get('USE_AWS', False)
             self.__conf['USE_AWS'] = bool(use_aws)
+            self.__conf['SPARK_S3_PROTOCOL'] = config.get('SPARK_S3_PROTOCOL', 's3')
             self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
             self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
-        if print_config is True:
+        if print_config:
             pprint(self.__conf)
-        if validate_config is True:
+        if validate_config:
             self.validate_config()
-        if use_aws is True:
-            self.s3 = S3FileSystem(**self.s3_storage_options)
-        else:
-            self.s3 = None
+        if sc and use_aws and self.config('SPARK_S3_PROTOCOL') == 's3a':
+            sc._jsc.hadoopConfiguration().set('fs.s3a.access.key', self.config('AWS_ACCESS_KEY_ID'))
+            sc._jsc.hadoopConfiguration().set('fs.s3a.secret.key', self.config('AWS_SECRET_ACCESS_KEY'))
+
+    @property
+    def s3(self):
+        if self.config('USE_AWS'):
+            return S3FileSystem(**self.s3_storage_options)
 
     @property
     def s3_storage_options(self):
@@ -144,7 +154,7 @@ class DyeScore:
 
     def get_zarr_store(self, file_path):
         if self.config('USE_AWS') is True:
-            return S3Map(root=file_path, s3=self.s3)
+            return S3Map(root=file_path.lstrip('s3://'), s3=self.s3)
         else:
             return file_path
 
@@ -165,8 +175,8 @@ class DyeScore:
         Raises AssertionError if values are incorrect.
         """
         if self.config('USE_AWS') is True:
-            assert self.config('INPUT_PARQUET_LOCATION').startswith('s3://')
-            assert self.config('DYESCORE_DATA_DIR').startswith('s3://')
+            assert self.config('INPUT_PARQUET_LOCATION').startswith(f's3://')
+            assert self.config('DYESCORE_DATA_DIR').startswith(f's3://')
 
     def dye_score_data_file(self, filename):
         """Helper function to return standardized filename.
@@ -192,6 +202,12 @@ class DyeScore:
             assert column in df.columns, f'{column} missing from df.columns ({df.columns})'
             assert df[column].dtype == 'object', f'{column} does not have dtype `object`'
         return True
+
+    def spark_convert(self, path):
+        if self.config('USE_AWS') and self.config('SPARK_S3_PROTOCOL') == 's3a':
+            return path.replace('s3://', 's3a://')
+        else:
+            return path
 
     def get_input_df(self, columns=None):
         """Helper function to return the input dataframe.
@@ -301,22 +317,6 @@ class DyeScore:
         snippet_lookup.to_parquet(outpath, **self.to_parquet_opts)
         return outpath
 
-    def _load_and_join_raw_data_to_snippets(self, spark, columns=[], override=False):
-        # File setup
-        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
-        inpath = self.dye_score_data_file('raw_snippet_call_df')
-        self.file_in_validation(snippet_map)
-        self.file_in_validation(inpath)
-
-        # Process - pivot with spark and save to tmp file
-        df_map = spark.read.parquet(snippet_map).select(['raw_snippet', 'snippet'])
-        df = spark.read.parquet(inpath)
-        if columns:
-            df = df.select(columns)
-        joined = df.join(df_map, on='raw_snippet')
-        joined = joined.drop('raw_snippet')
-        return joined
-
     def build_snippets(self, spark, override=False):
         """Builds row-normalized snippet dataset
 
@@ -324,6 +324,9 @@ class DyeScore:
         * Data is output in zarr format with processing by spark, dask, and xarray.
         * Creates an intermediate tmp file when converting from spark to dask.
         * Slow running operation - follow spark and dask status to see progress
+        
+        We use spark here because dask cannot memory efficiently compute a pivot
+        table. This is the only function we need spark context for.
 
         Args:
             spark (pyspark.sql.session.SparkSession): spark instance
@@ -333,45 +336,75 @@ class DyeScore:
             str. The file path where output is saved
         """
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+        print("""
+        This function uses both spark and dask, make sure you have workers 
+        available for both.""")
 
         # File setup
         outpath = self.dye_score_data_file('snippets')
+        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
         self.file_out_validation(outpath, override)
+        self.file_in_validation(snippet_map)
+        self.file_in_validation(inpath)
+
+        # Get symbols
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
+        self.file_in_validation(inpath)
+        df = read_parquet(inpath, columns=['symbol'], **self.from_parquet_opts)
+        symbols = df.symbol.unique().compute()
+        symbols = sorted(list(symbols.values))
+        print(f'Dataset has {len(symbols)} unique symbols')
+        
+        # Setup spark files
+        snippet_map = self.spark_convert(snippet_map)
+        inpath = self.spark_convert(inpath)
 
         # Process - pivot with spark and save to tmp file
-        df_to_pivot = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['symbol', 'called', 'raw_snippet'], override=override
-        )
-        symbols = df_to_pivot.select('symbol').distinct().toPandas()
-        symbols = sorted(list(symbols.symbol.values))
-        print(f'Dataset has {len(symbols)} unique symbols')
+        df_map = spark.read.parquet(snippet_map).select(['raw_snippet', 'snippet'])
+        df = spark.read.parquet(inpath).select(['symbol', 'called', 'raw_snippet'])
+        df_to_pivot = df.join(df_map, on='raw_snippet')
+        df_to_pivot = df_to_pivot.drop('raw_snippet')
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
         pivot = pivot.na.fill(0)
 
-        tmp = 'tmp.csv'
-        if os.path.exists(tmp):
-            shutil.rmtree(tmp)
-        pivot.write.csv(tmp, header=True)
+        tmp_dir = self.config('TMP_DIR')
+        tmp = os.path.join(tmp_dir, 'tmp.csv')
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
+            if self.s3.exists(tmp):
+                self.s3.rm(tmp, recursive=True)
+        else:
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
+        pivot.write.csv(self.spark_convert(tmp), header=True)
 
         # Process - set_index, normalize and save to zarr
         dtypes = {symbol: 'float64' for symbol in symbols}
         dtypes['snippet'] = 'object'
-        pivot_table = read_csv(f'{tmp}/*.csv', dtype=dtypes)
+        pivot_table = read_csv(f'{tmp}/*.csv', dtype=dtypes, storage_options=self.s3_storage_options)
         pivot_table = pivot_table.set_index('snippet')
 
         row_normalize = pivot_table.div(pivot_table.sum(axis=1), axis=0)
-        row_normalize_array = DataArray(
-                row_normalize,
+        row_normalize_array = row_normalize.to_dask_array(lengths=True)
+
+        # - xarray needs uniformly sized chunks
+        row_normalize_array = row_normalize_array.rechunk({0: 'auto', 1: -1})
+        data_array = DataArray(
+                row_normalize_array,
                 dims=['snippet', 'symbol'],
                 coords={
                     'snippet': row_normalize.index.values,
                     'symbol': row_normalize.columns
                 }
         )
-        print(row_normalize_array)
-        row_normalize_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+        print(data_array)
+        data_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+
         # Cleanup
-        shutil.rmtree(tmp)
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
+            self.s3.rm(tmp, recursive=True)
+        else:
+            shutil.rmtree(tmp)
         return outpath
 
     def build_snippet_snippet_dyeing_map(self, spark, override=False):
@@ -379,7 +412,7 @@ class DyeScore:
 
         Adds clean_script field to dataset. Saves parquet file with:
             * snippet - the int version, not raw_snippet
-            * top_level_url
+            * document_url
             * script_url
             * clean_script
 
@@ -392,26 +425,55 @@ class DyeScore:
 
         """
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+        print("""
+        This function uses both spark and dask, make sure you have workers 
+        available for both.""")
 
         # File setup
         outpath = self.dye_score_data_file('snippet_dyeing_map')
+        snippet_map = self.dye_score_data_file('raw_snippet_to_snippet_lookup')
+        inpath = self.dye_score_data_file('raw_snippet_call_df')
         self.file_out_validation(outpath, override)
+        self.file_in_validation(snippet_map)
+        self.file_in_validation(inpath)
+
+        tmp_dir = self.config('TMP_DIR')
+        tmp = os.path.join(tmp_dir, 'tmp.parquet')
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
+            if self.s3.exists(tmp):
+                self.s3.rm(tmp, recursive=True)
+        else:
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
 
         # Process
-        df = self._load_and_join_raw_data_to_snippets(
-            spark, columns=['top_level_url', 'script_url', 'func_name', 'raw_snippet'], override=override
-        )
-        get_clean_script_udf = udf(get_clean_script)
-        df = df.withColumn('clean_script', get_clean_script_udf(df.script_url))
-        df = df.dropDuplicates()
-        df.write.parquet(outpath, compression='snappy')
+        # - use spark to drop duplicates
+        df = spark.read.parquet(self.spark_convert(inpath)).select(['top_level_url', 'document_url', 'script_url', 'func_name', 'raw_snippet'])
+        df = df.drop_duplicates()
+        df = df.coalesce(40)
+        df = df.write.parquet(self.spark_convert(tmp))
+
+        # - merge snippets in
+        df = read_parquet(tmp + '/*.parquet', **self.from_parquet_opts)
+        df['clean_script'] = df.script_url.apply(get_clean_script, meta='O')
+        df_map = read_parquet(snippet_map, columns=['snippet', 'raw_snippet'], **self.from_parquet_opts)
+        df = df.merge(df_map, on='raw_snippet')
+        df = df.drop('raw_snippet', axis=1)
+        df.to_parquet(outpath, **self.to_parquet_opts)
+
+        # Cleanup
+        if self.config('USE_AWS') and tmp.startswith('s3://'):
+            self.s3.rm(tmp, recursive=True)
+        else:
+            shutil.rmtree(tmp)
+
         return outpath
 
     ##
     # Dyeing and Scoring
     ##
 
-    def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False):
+    def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False, snippet_chunksize=1000, dye_snippet_chunksize=1000):
         """Computes all pairwise distances from dye snippets to all other snippets.
 
         * Expects snippets file to exist.
@@ -439,11 +501,11 @@ class DyeScore:
         # Process distances
         df = open_zarr(store=self.get_zarr_store(snippet_file))['data']
         df = df.chunk({'symbol': -1})
-        df_c = df.chunk({'snippet': 10_000})
+        df_c = df.chunk({'snippet': snippet_chunksize})
 
         df_dye = df.loc[{'snippet': dye_snippets}]
         df_dye = df_dye.rename({'snippet': 'dye_snippet'})
-        df_dye_c = df_dye.chunk({'dye_snippet': 100})
+        df_dye_c = df_dye.chunk({'dye_snippet': dye_snippet_chunksize})
 
         distance_array = apply_ufunc(
             get_chebyshev_distances_xarray_ufunc,
@@ -456,14 +518,32 @@ class DyeScore:
         distance_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
         return outpath
 
-    def compute_snippets_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
-        """Get score for snippets for a range of distance thresholds.
+    def _validate_thresholds(self, thresholds, resultsdir, filename_pattern, filename_suffix, override):
+        thresholds_to_run = []
+        existing_outpaths = []
+        # If override is False, don't fail out, check
+        # all thresholds and run those that don't have values
+        for threshold in thresholds:
+            outpath = os.path.join(
+                resultsdir, 
+                filename_pattern.format(suff=filename_suffix, t=threshold)
+            )
+            try:
+                self.file_out_validation(outpath, override)
+                thresholds_to_run.append(threshold)
+            except ValueError as e:
+                print(f'Threshold {threshold} exists, skipping.')
+                existing_outpaths.append(outpath)
+        return thresholds_to_run, existing_outpaths
 
-        * Uses hard coded leaky threshold of 20%
-        * Writes results to parquet files with name ``snippets_score_from_{filename_suffix}_{threshold}``
+    def compute_leaky_snippet_data(self, thresholds_to_test, filename_suffix='dye_snippets', override=False):
+        """Compute leaky percentages for a range of thresholds. This enables user
+        to select the "leaky threshold" for following rounds.
+
+        * Writes results to parquet files with name ``leak_test_{filename_suffix}_{threshold}``
 
         Args:
-            thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            thresholds_to_test (list): List of distances to compute percentage of snippets dyed at for e.g. ``[0.23, 0.24, 0.25]``
             filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
                 ``dye_snippets``
             override (bool, optional): Override output files. Defaults to ``False``.
@@ -474,16 +554,59 @@ class DyeScore:
         file_name = f'snippets_dye_distances_from_{filename_suffix}'
         inpath = os.path.join(resultsdir, file_name)
         self.file_in_validation(inpath)
-        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
 
-        LEAKY_THRESHOLD = 0.2
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds_to_test, resultsdir, 'leak_test_{suff}_{t}', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
+        n_snippets = len(distance_array.coords['snippet'])
+        outpaths = []
+        for threshold in thresholds_to_run:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
+            percent_to_dye = (distance_array < threshold).sum(dim='snippet') / n_snippets
+            outpath = os.path.join(resultsdir, f'leak_test_{filename_suffix}_{threshold}')
+            percent_to_dye.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
+            outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
+        return outpaths
+
+    def compute_snippets_scores_for_thresholds(self, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False):
+        """Get score for snippets for a range of distance thresholds.
+
+        * Writes results to parquet files with name ``snippets_score_from_{filename_suffix}_{threshold}``
+
+        Args:
+            thresholds (list): List of distances to compute snippet scores for e.g. ``[0.23, 0.24, 0.25]``
+            leaky_threshold (float): Remove all snippets which dye more than this fraction of all other snippets.
+            filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
+                ``dye_snippets``
+            override (bool, optional): Override output files. Defaults to ``False``.
+        Returns:
+            list. Paths results were written to
+        """
+        resultsdir = self.config('DYESCORE_RESULTS_DIR')
+        file_name = f'snippets_dye_distances_from_{filename_suffix}'
+        inpath = os.path.join(resultsdir, file_name)
+        self.file_in_validation(inpath)
+
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'snippets_score_from_{suff}_{t}', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        distance_array = open_zarr(store=self.get_zarr_store(inpath))['data']
         n_sites = distance_array.shape[0]
-        N_LEAKY_THRESHOLD = LEAKY_THRESHOLD * n_sites
+        n_leaky_threshold = leaky_threshold * n_sites
 
         outpaths = []
-        for threshold in thresholds:
+        for threshold in thresholds_to_run:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
             n_to_dye = np.sum(distance_array < threshold, axis=0).persist()
-            non_leaky_sites = n_to_dye[n_to_dye < N_LEAKY_THRESHOLD].coords.to_index()
+            non_leaky_sites = n_to_dye[n_to_dye < n_leaky_threshold].coords.to_index()
             distance_array_filtered = distance_array.loc[{'dye_snippet': non_leaky_sites}]
 
             site_counts = np.sum(distance_array_filtered < threshold, axis=1)
@@ -491,9 +614,9 @@ class DyeScore:
             site_counts_df = site_counts_df.reset_index().rename(columns={'data': 'dye_count'})
             site_counts_df['snippet'] = site_counts_df.snippet.astype(int)
             outpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
-            self.file_out_validation(outpath, override)
             from_pandas(site_counts_df, npartitions=1).to_parquet(outpath, **self.to_parquet_opts)
             outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
         return outpaths
 
     def compute_dye_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
@@ -510,23 +633,36 @@ class DyeScore:
         Returns:
             list. Paths results were written to
         """
-        snippet_dyeing_map_file = self.dye_score_data_file('snippet_dyeing_map')
-        snippet_data = read_parquet(snippet_dyeing_map_file, **self.from_parquet_opts)
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
 
-        outpaths = []
         for threshold in thresholds:
             inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
-            outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
             self.file_in_validation(inpath)
-            self.file_out_validation(outpath, override)
+
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'dye_score_from_{suff}_{t}.csv', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        snippet_dyeing_map_file = self.dye_score_data_file('snippet_dyeing_map')
+        self.file_in_validation(snippet_dyeing_map_file)
+        snippet_data = read_parquet(snippet_dyeing_map_file, **self.from_parquet_opts)
+
+        outpaths = []
+        for threshold in thresholds_to_run:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
+            inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
+            outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
 
             site_counts_df = read_parquet(inpath, **self.from_parquet_opts)
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
-            script_to_dye_max.compute().to_csv(outpath, compression='gzip', storage_options=self.s3_storage_options)
+            with self.s3.open(outpath, 'w') as f:
+                script_to_dye_max.compute().to_csv(f)
             outpaths.append(outpath)
+        outpaths.extend(existing_outpaths)
         return outpaths
 
     ##
@@ -541,13 +677,17 @@ class DyeScore:
         else:
             return np.NaN
 
-    def _build_plot_data_for_score_df(self, score_df, compare_list):
+    def _build_plot_data_for_score_df(self, s3, inpath, outpath, compare_list):
+        with s3.open(inpath, 'r') as f:
+            score_df = pd_read_csv(f)
         pr = pd_DataFrame({'dye_score_threshold': np.linspace(0, score_df.dye_score.max(), 1000)})
         pr['recall'] = pr.dye_score_threshold.apply(
             self._get_recall, score_df=score_df, compare_list=compare_list
         )
         pr['n_over_threshold'] = pr.dye_score_threshold.apply(lambda x: (score_df.dye_score > x).sum())
-        return pr
+        with s3.open(outpath, 'w') as f:
+            pr.to_csv(f, index=False)
+        return outpath
 
     def build_plot_data_for_thresholds(self, compare_list, thresholds, filename_suffix='dye_snippets', override=False):
         """Builds a dataframe for evaluation
@@ -564,14 +704,27 @@ class DyeScore:
             list. Paths results were written to
         """
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
-        outpaths = []
+        
+        # Infile validation
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv.gz')
-            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv.gz')
+            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             self.file_in_validation(inpath)
-            self.file_out_validation(outpath, override)
-            dye_score_df = pd_read_csv(inpath, storage_options=self.s3_storage_options)
-            plot_df = self._build_plot_data_for_score_df(dye_score_df, compare_list)
-            plot_df.to_csv(outpath, compression='gzip', index=False, storage_options=self.s3_storage_options)
-            outpaths.append(outpath)
+       
+        # Outfile validation
+        thresholds_to_run, existing_outpaths = self._validate_thresholds(
+            thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}.csv', filename_suffix, override
+        )
+        if len(thresholds_to_run) == 0:
+            return existing_outpaths
+
+        futures = []
+        for threshold in thresholds_to_run:
+            print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
+            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
+            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            futures.append(
+                delayed(self._build_plot_data_for_score_df)(self.s3, inpath, outpath, compare_list)
+            )
+        outpaths = list(compute(futures))[0]
+        outpaths.extend(existing_outpaths)
         return outpaths
