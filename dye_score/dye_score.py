@@ -62,6 +62,8 @@ class DyeScore:
             * USE_AWS - default False - set true if data store is AWS
             * AWS_ACCESS_KEY_ID - optional - for storing and retrieving data on AWS
             * AWS_SECRET_ACCESS_KEY - optional - for storing and retrieving data on AWS
+            * SPARK_S3_PROTOCOL - default 's3' - only s3 or s3a are used
+            * PARQUET_ENGINE - default 'pyarrow' - pyarrow or fastparquet
 
             Locations can be a local file path or a bucket.
         validate_config (bool, optional): Run ``DyeScore.validate_config`` method. Defaults to ``True``.
@@ -108,6 +110,7 @@ class DyeScore:
             self.__conf['SPARK_S3_PROTOCOL'] = config.get('SPARK_S3_PROTOCOL', 's3')
             self.__conf['AWS_ACCESS_KEY_ID'] = config.get('AWS_ACCESS_KEY_ID', '')
             self.__conf['AWS_SECRET_ACCESS_KEY'] = config.get('AWS_SECRET_ACCESS_KEY', '')
+            self.__conf['PARQUET_ENGINE'] = config.get('PARQUET_ENGINE', 'pyarrow')
         if print_config:
             pprint(self.__conf)
         if validate_config:
@@ -142,14 +145,17 @@ class DyeScore:
     def to_parquet_opts(self):
         """Options used when saving to parquet."""
         return dict(
-            compression='snappy', engine='pyarrow', storage_options=self.s3_storage_options
+            compression='snappy',
+            engine=self.config('PARQUET_ENGINE'),
+            storage_options=self.s3_storage_options
         )
 
     @property
     def from_parquet_opts(self):
         """Options used when saving to parquet."""
         return dict(
-            engine='pyarrow', storage_options=self.s3_storage_options
+            engine=self.config.('PARQUET_ENGINE'),
+            storage_options=self.s3_storage_options
         )
 
     def get_zarr_store(self, file_path):
@@ -324,7 +330,7 @@ class DyeScore:
         * Data is output in zarr format with processing by spark, dask, and xarray.
         * Creates an intermediate tmp file when converting from spark to dask.
         * Slow running operation - follow spark and dask status to see progress
-        
+
         We use spark here because dask cannot memory efficiently compute a pivot
         table. This is the only function we need spark context for.
 
@@ -337,7 +343,7 @@ class DyeScore:
         """
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
         print("""
-        This function uses both spark and dask, make sure you have workers 
+        This function uses both spark and dask, make sure you have workers
         available for both.""")
 
         # File setup
@@ -355,7 +361,7 @@ class DyeScore:
         symbols = df.symbol.unique().compute()
         symbols = sorted(list(symbols.values))
         print(f'Dataset has {len(symbols)} unique symbols')
-        
+
         # Setup spark files
         snippet_map = self.spark_convert(snippet_map)
         inpath = self.spark_convert(inpath)
@@ -426,7 +432,7 @@ class DyeScore:
         """
         spark.conf.set("spark.sql.execution.arrow.enabled", "true")
         print("""
-        This function uses both spark and dask, make sure you have workers 
+        This function uses both spark and dask, make sure you have workers
         available for both.""")
 
         # File setup
@@ -525,7 +531,7 @@ class DyeScore:
         # all thresholds and run those that don't have values
         for threshold in thresholds:
             outpath = os.path.join(
-                resultsdir, 
+                resultsdir,
                 filename_pattern.format(suff=filename_suffix, t=threshold)
             )
             try:
@@ -704,12 +710,12 @@ class DyeScore:
             list. Paths results were written to
         """
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
-        
+
         # Infile validation
         for threshold in thresholds:
             inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
             self.file_in_validation(inpath)
-       
+
         # Outfile validation
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
             thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}.csv', filename_suffix, override
