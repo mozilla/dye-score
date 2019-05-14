@@ -44,6 +44,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/mozilla/dye-score',
-    version='0.7.1',
+    version='0.8.0',
     zip_safe=False,
 )
