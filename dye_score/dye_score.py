@@ -154,7 +154,7 @@ class DyeScore:
     def from_parquet_opts(self):
         """Options used when saving to parquet."""
         return dict(
-            engine=self.config.('PARQUET_ENGINE'),
+            engine=self.config('PARQUET_ENGINE'),
             storage_options=self.s3_storage_options
         )
 
