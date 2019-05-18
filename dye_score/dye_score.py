@@ -758,26 +758,26 @@ class DyeScore:
 
         # Gather up relevant results
         results = []
-		for threshold in thresholds:
+        for threshold in thresholds:
             inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
             if self.s3:
-				with self.s3.open(pr_df_path, 'r') as f:
-					pr_df = pd_read_csv(f)
+                with self.s3.open(inpath, 'r') as f:
+                    pr_df = pd_read_csv(f)
             else:
                 pf_df = pd_read_csv(inpath)
 
-			for recall_threshold in recall_thresholds:
-				# TODO Use idxmin
-				result = {}
-				n_over_threshold = pr_df[pr_df > recall_threshold].sort_values(by='recall').iloc[0]['n_over_threshold']
-				result['distance_threshold'] = threshold
-				result['n_over_threshold'] = n_over_threshold
-				result['recall_threshold'] = recall_threshold
-			results.append(result)
+            for recall_threshold in recall_thresholds:
+                # TODO Use idxmin
+                result = {}
+                n_over_threshold = pr_df[pr_df > recall_threshold].sort_values(by='recall').iloc[0]['n_over_threshold']
+                result['distance_threshold'] = threshold
+                result['n_over_threshold'] = n_over_threshold
+                result['recall_threshold'] = recall_threshold
+            results.append(result)
 
         # Make DF and save
         total_results = pr_df['n_over_threshold'].max()
-        results_df = pd.DataFrame.from_records(results)
+        results_df = pd_DataFrame.from_records(results)
         results_df['percent'] = (results_df.n_over_threshold / total_results)
         if self.s3:
             with self.s3.open(outpath, 'w') as f:
