@@ -1,3 +1,7 @@
+* v0.9.3
+
+  * Small patches to leave 0.9 functional (`#26`_)
+
 * v0.9.0
 
   * Numerous small improvements (`#14`_)
@@ -14,3 +18,4 @@
 .. _#22: https://github.com/mozilla/dye-score/pull/22
 .. _#24: https://github.com/mozilla/dye-score/pull/24
 .. _#25: https://github.com/mozilla/dye-score/pull/25
+.. _#26: https://github.com/mozilla/dye-score/pull/26
