@@ -768,13 +768,14 @@ class DyeScore:
         return outpaths
 
     def get_recall_summary_plot_data(
-        self, thresholds, recall_thresholds, filename_suffix='dye_snippets', override=True
+        self, thresholds, recall_thresholds, leaky_threshold, filename_suffix='dye_snippets', override=True
     ):
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
 
         # Infile validation
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            inpath = os.path.join(
+                resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
             self.file_in_validation(inpath)
 
         # Outfile validation
@@ -784,7 +785,8 @@ class DyeScore:
         # Gather up relevant results
         results = []
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            inpath = os.path.join(
+                resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
             if self.s3:
                 with self.s3.open(inpath, 'r') as f:
                     pr_df = pd_read_csv(f)
