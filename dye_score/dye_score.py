@@ -22,10 +22,6 @@ from xarray import (
     DataArray,
     open_zarr,
 )
-try:
-    from pyspark.sql.functions import udf
-except ModuleNotFoundError:
-    print('PySpark not available for data processing.')
 
 from .distances import (
     get_chebyshev_distances_xarray_ufunc,
@@ -104,7 +100,8 @@ class DyeScore:
             self.__conf['INPUT_PARQUET_LOCATION'] = config['INPUT_PARQUET_LOCATION']
             self.__conf['DYESCORE_DATA_DIR'] = config['DYESCORE_DATA_DIR']
             self.__conf['DYESCORE_RESULTS_DIR'] = config['DYESCORE_RESULTS_DIR']
-            self.__conf['TMP_DIR'] = config.get('TMP_DIR', config['DYESCORE_DATA_DIR'])  # Default to data dir if not provided
+            # Default to data dir if not provided
+            self.__conf['TMP_DIR'] = config.get('TMP_DIR', config['DYESCORE_DATA_DIR'])
             use_aws = config.get('USE_AWS', False)
             self.__conf['USE_AWS'] = bool(use_aws)
             self.__conf['SPARK_S3_PROTOCOL'] = config.get('SPARK_S3_PROTOCOL', 's3')
@@ -305,7 +302,7 @@ class DyeScore:
         ids to reference snippets. This method creates the ids and saves the map of raw ids to snippets.
 
         Args:
-            override (bool): True to replace any existing outputs
+            override (bool, optional): True to replace any existing outputs. Defaults to ``False``
 
         Returns:
             str. The file path where output is saved
@@ -323,7 +320,7 @@ class DyeScore:
         snippet_lookup.to_parquet(outpath, **self.to_parquet_opts)
         return outpath
 
-    def build_snippets(self, spark, override=False):
+    def build_snippets(self, spark, na_value=0, override=False):
         """Builds row-normalized snippet dataset
 
         * Dimensions are n snippets x s unique symbols in dataset.
@@ -336,7 +333,8 @@ class DyeScore:
 
         Args:
             spark (pyspark.sql.session.SparkSession): spark instance
-            override (bool): True to replace any existing outputs
+            na_value (int, optional): The value to fill vector where there's no call. Defaults to ``0``.
+            override (bool, optional): True to replace any existing outputs. Defaults to ``False``
 
         Returns:
             str. The file path where output is saved
@@ -372,7 +370,7 @@ class DyeScore:
         df_to_pivot = df.join(df_map, on='raw_snippet')
         df_to_pivot = df_to_pivot.drop('raw_snippet')
         pivot = df_to_pivot.groupBy('snippet').pivot('symbol', symbols).sum('called')
-        pivot = pivot.na.fill(0)
+        pivot = pivot.na.fill(na_value)
 
         tmp_dir = self.config('TMP_DIR')
         tmp = os.path.join(tmp_dir, 'tmp.csv')
@@ -424,7 +422,7 @@ class DyeScore:
 
         Args:
             spark (pyspark.sql.session.SparkSession): spark instance
-            override (bool): True to replace any existing outputs
+            override (bool, optional): True to replace any existing outputs. Defaults to ``False``
 
         Returns:
             str. The file path where output is saved
@@ -454,7 +452,9 @@ class DyeScore:
 
         # Process
         # - use spark to drop duplicates
-        df = spark.read.parquet(self.spark_convert(inpath)).select(['top_level_url', 'document_url', 'script_url', 'func_name', 'raw_snippet'])
+        df = spark.read.parquet(self.spark_convert(inpath)).select(
+            ['top_level_url', 'document_url', 'script_url', 'func_name', 'raw_snippet']
+        )
         df = df.drop_duplicates()
         df = df.coalesce(40)
         df = df.write.parquet(self.spark_convert(tmp))
@@ -479,7 +479,10 @@ class DyeScore:
     # Dyeing and Scoring
     ##
 
-    def compute_distances_for_dye_snippets(self, dye_snippets, filename_suffix='dye_snippets', override=False, snippet_chunksize=1000, dye_snippet_chunksize=1000):
+    def compute_distances_for_dye_snippets(
+        self, dye_snippets, filename_suffix='dye_snippets',
+        snippet_chunksize=1000, dye_snippet_chunksize=1000, override=False,
+    ):
         """Computes all pairwise distances from dye snippets to all other snippets.
 
         * Expects snippets file to exist.
@@ -537,7 +540,7 @@ class DyeScore:
             try:
                 self.file_out_validation(outpath, override)
                 thresholds_to_run.append(threshold)
-            except ValueError as e:
+            except ValueError:
                 print(f'Threshold {threshold} exists, skipping.')
                 existing_outpaths.append(outpath)
         return thresholds_to_run, existing_outpaths
@@ -549,7 +552,8 @@ class DyeScore:
         * Writes results to parquet files with name ``leak_test_{filename_suffix}_{threshold}``
 
         Args:
-            thresholds_to_test (list): List of distances to compute percentage of snippets dyed at for e.g. ``[0.23, 0.24, 0.25]``
+            thresholds_to_test (list): List of distances to compute percentage of snippets
+                dyed at for e.g. ``[0.23, 0.24, 0.25]``
             filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
                 ``dye_snippets``
             override (bool, optional): Override output files. Defaults to ``False``.
@@ -579,7 +583,9 @@ class DyeScore:
         outpaths.extend(existing_outpaths)
         return outpaths
 
-    def compute_snippets_scores_for_thresholds(self, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False):
+    def compute_snippets_scores_for_thresholds(
+        self, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False
+    ):
         """Get score for snippets for a range of distance thresholds.
 
         * Writes results to parquet files with name ``snippets_score_from_{filename_suffix}_{threshold}``
