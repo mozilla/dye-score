@@ -527,7 +527,9 @@ class DyeScore:
         distance_array.to_dataset(name='data').to_zarr(store=self.get_zarr_store(outpath))
         return outpath
 
-    def _validate_thresholds(self, thresholds, resultsdir, filename_pattern, filename_suffix, override):
+    def _validate_thresholds(
+        self, thresholds, resultsdir, filename_pattern, filename_suffix, override, leaky_threshold
+    ):
         thresholds_to_run = []
         existing_outpaths = []
         # If override is False, don't fail out, check
@@ -535,7 +537,7 @@ class DyeScore:
         for threshold in thresholds:
             outpath = os.path.join(
                 resultsdir,
-                filename_pattern.format(suff=filename_suffix, t=threshold)
+                filename_pattern.format(suff=filename_suffix, t=threshold, leaky_threshold=leaky_threshold)
             )
             try:
                 self.file_out_validation(outpath, override)
@@ -605,7 +607,8 @@ class DyeScore:
         self.file_in_validation(inpath)
 
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
-            thresholds, resultsdir, 'snippets_score_from_{suff}_{t}', filename_suffix, override
+            thresholds, resultsdir, 'snippets_score_from_{suff}_{t}_leak_{leaky_threshold}',
+            filename_suffix, override, leaky_threshold
         )
         if len(thresholds_to_run) == 0:
             return existing_outpaths
@@ -625,13 +628,17 @@ class DyeScore:
             site_counts_df = site_counts.to_dataframe()
             site_counts_df = site_counts_df.reset_index().rename(columns={'data': 'dye_count'})
             site_counts_df['snippet'] = site_counts_df.snippet.astype(int)
-            outpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
+            outpath = os.path.join(
+                resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}'
+            )
             from_pandas(site_counts_df, npartitions=1).to_parquet(outpath, **self.to_parquet_opts)
             outpaths.append(outpath)
         outpaths.extend(existing_outpaths)
         return outpaths
 
-    def compute_dye_scores_for_thresholds(self, thresholds, filename_suffix='dye_snippets', override=False):
+    def compute_dye_scores_for_thresholds(
+        self, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False
+    ):
         """Get dye scores for a range of distance thresholds.
 
         * Uses results from ``compute_snippets_scores_for_thresholds``
@@ -648,11 +655,13 @@ class DyeScore:
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
 
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
+            inpath = os.path.join(
+                resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}')
             self.file_in_validation(inpath)
 
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
-            thresholds, resultsdir, 'dye_score_from_{suff}_{t}.csv', filename_suffix, override
+            thresholds, resultsdir, 'dye_score_from_{suff}_{t}_leak_{leaky_threshold}.csv',
+            filename_suffix, override, leaky_threshold,
         )
         if len(thresholds_to_run) == 0:
             return existing_outpaths
@@ -664,8 +673,10 @@ class DyeScore:
         outpaths = []
         for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
-            inpath = os.path.join(resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}')
-            outpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
+            inpath = os.path.join(
+                resultsdir, f'snippets_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}')
+            outpath = os.path.join(
+                resultsdir, f'dye_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
 
             site_counts_df = read_parquet(inpath, **self.from_parquet_opts)
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
@@ -701,7 +712,9 @@ class DyeScore:
             pr.to_csv(f, index=False)
         return outpath
 
-    def build_plot_data_for_thresholds(self, compare_list, thresholds, filename_suffix='dye_snippets', override=False):
+    def build_plot_data_for_thresholds(
+        self, compare_list, thresholds, leaky_threshold, filename_suffix='dye_snippets', override=False
+    ):
         """Builds a dataframe for evaluation
 
         Contains the recall compared to the ``compare_list`` for  scripts under the threshold.
@@ -719,12 +732,14 @@ class DyeScore:
 
         # Infile validation
         for threshold in thresholds:
-            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
+            inpath = os.path.join(
+                resultsdir, f'dye_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
             self.file_in_validation(inpath)
 
         # Outfile validation
         thresholds_to_run, existing_outpaths = self._validate_thresholds(
-            thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}.csv', filename_suffix, override
+            thresholds, resultsdir, 'dye_score_plot_data_from_{suff}_{t}_leak_{leaky_threshold}.csv',
+            filename_suffix, override, leaky_threshold
         )
         if len(thresholds_to_run) == 0:
             return existing_outpaths
@@ -732,8 +747,10 @@ class DyeScore:
         futures = []
         for threshold in thresholds_to_run:
             print(f"{datetime.datetime.now().strftime('%H:%M:%S')} Running threshold {threshold}")
-            inpath = os.path.join(resultsdir, f'dye_score_from_{filename_suffix}_{threshold}.csv')
-            outpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            inpath = os.path.join(
+                resultsdir, f'dye_score_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
+            outpath = os.path.join(
+                resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
             futures.append(
                 delayed(self._build_plot_data_for_score_df)(self.s3, inpath, outpath, compare_list)
             )
