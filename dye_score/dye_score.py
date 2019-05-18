@@ -528,17 +528,23 @@ class DyeScore:
         return outpath
 
     def _validate_thresholds(
-        self, thresholds, resultsdir, filename_pattern, filename_suffix, override, leaky_threshold
+        self, thresholds, resultsdir, filename_pattern, filename_suffix, override, leaky_threshold=None
     ):
         thresholds_to_run = []
         existing_outpaths = []
         # If override is False, don't fail out, check
         # all thresholds and run those that don't have values
         for threshold in thresholds:
-            outpath = os.path.join(
-                resultsdir,
-                filename_pattern.format(suff=filename_suffix, t=threshold, leaky_threshold=leaky_threshold)
-            )
+            if leaky_threshold:
+                outpath = os.path.join(
+                    resultsdir,
+                    filename_pattern.format(suff=filename_suffix, t=threshold, leaky_threshold=leaky_threshold)
+                )
+            else:
+                outpath = os.path.join(
+                    resultsdir,
+                    filename_pattern.format(suff=filename_suffix, t=threshold)
+                )
             try:
                 self.file_out_validation(outpath, override)
                 thresholds_to_run.append(threshold)
