@@ -750,7 +750,9 @@ class DyeScore:
         outpaths.extend(existing_outpaths)
         return outpaths
 
-    def get_recall_summary_plot_data(self, thresholds, recall_thresholds, filename_suffix='dye_snippets', override=True):
+    def get_recall_summary_plot_data(
+        self, thresholds, recall_thresholds, filename_suffix='dye_snippets', override=True
+    ):
         resultsdir = self.config('DYESCORE_RESULTS_DIR')
 
         # Infile validation
@@ -770,7 +772,7 @@ class DyeScore:
                 with self.s3.open(inpath, 'r') as f:
                     pr_df = pd_read_csv(f)
             else:
-                pf_df = pd_read_csv(inpath)
+                pr_df = pd_read_csv(inpath)
 
             for recall_threshold in recall_thresholds:
                 # TODO Use idxmin
