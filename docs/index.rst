@@ -1,8 +1,8 @@
 .. include:: ../README.rst
 
-Table of Contents
------------------
-
+Documentation Contents
+----------------------
+ 
 .. toctree::
    :maxdepth: 1
 
@@ -10,3 +10,11 @@ Table of Contents
    usage
    api
    contributing
+
+
+History
+-------
+
+.. include:: ../HISTORY.rst
+
+.. include:: ../CODE_OF_CONDUCT.rst
