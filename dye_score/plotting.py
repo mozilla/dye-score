@@ -57,17 +57,19 @@ def get_pr_plot(
     return p
 
 
-def get_plots_for_thresholds(ds, thresholds, pr_plot_opts, filename_suffix='dye_snippets'):
+def get_plots_for_thresholds(ds, thresholds, leaky_threshold, pr_plot_opts, filename_suffix='dye_snippets'):
     resultsdir = ds.config('DYESCORE_RESULTS_DIR')
 
     # Infile validation
     for threshold in thresholds:
-        inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+        inpath = os.path.join(
+            resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
         ds.file_in_validation(inpath)
 
     plots = {}
     for threshold in thresholds:
-        inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+        inpath = os.path.join(
+            resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}_leak_{leaky_threshold}.csv')
         if ds.s3:
             with ds.s3.open(inpath, 'r') as f:
                 pr_df = pd_read_csv(f)
