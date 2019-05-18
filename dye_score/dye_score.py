@@ -671,8 +671,11 @@ class DyeScore:
             script_to_dye = snippet_data.merge(site_counts_df, on='snippet')
             script_to_dye_max = script_to_dye[['clean_script', 'dye_count']].groupby('clean_script').max()
             script_to_dye_max = script_to_dye_max.rename(columns={'dye_count': 'dye_score'})
-            with self.s3.open(outpath, 'w') as f:
-                script_to_dye_max.compute().to_csv(f)
+            if self.s3:
+                with self.s3.open(outpath, 'w') as f:
+                    script_to_dye_max.compute().to_csv(f)
+            else:
+                script_to_dye_max.compute().to_csv(outpath)
             outpaths.append(outpath)
         outpaths.extend(existing_outpaths)
         return outpaths
@@ -690,15 +693,21 @@ class DyeScore:
             return np.NaN
 
     def _build_plot_data_for_score_df(self, s3, inpath, outpath, compare_list):
-        with s3.open(inpath, 'r') as f:
-            score_df = pd_read_csv(f)
+        if s3:
+            with s3.open(inpath, 'r') as f:
+                score_df = pd_read_csv(f)
+        else:
+            score_df = pd_read_csv(inpath)
         pr = pd_DataFrame({'dye_score_threshold': np.linspace(0, score_df.dye_score.max(), 1000)})
         pr['recall'] = pr.dye_score_threshold.apply(
             self._get_recall, score_df=score_df, compare_list=compare_list
         )
         pr['n_over_threshold'] = pr.dye_score_threshold.apply(lambda x: (score_df.dye_score > x).sum())
-        with s3.open(outpath, 'w') as f:
-            pr.to_csv(f, index=False)
+        if s3:
+            with s3.open(outpath, 'w') as f:
+                pr.to_csv(f, index=False)
+        else:
+            pr.to_csv(outpath, index=False)
         return outpath
 
     def build_plot_data_for_thresholds(self, compare_list, thresholds, filename_suffix='dye_snippets', override=False):
@@ -740,3 +749,47 @@ class DyeScore:
         outpaths = list(compute(futures))[0]
         outpaths.extend(existing_outpaths)
         return outpaths
+
+    def get_recall_summary_plot_data(
+        self, thresholds, recall_thresholds, filename_suffix='dye_snippets', override=True
+    ):
+        resultsdir = self.config('DYESCORE_RESULTS_DIR')
+
+        # Infile validation
+        for threshold in thresholds:
+            inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            self.file_in_validation(inpath)
+
+        # Outfile validation
+        outpath = os.path.join(resultsdir, f'recall_summary_plot_data.csv')
+        self.file_out_validation(outpath, override)
+
+        # Gather up relevant results
+        results = []
+        for threshold in thresholds:
+            inpath = os.path.join(resultsdir, f'dye_score_plot_data_from_{filename_suffix}_{threshold}.csv')
+            if self.s3:
+                with self.s3.open(inpath, 'r') as f:
+                    pr_df = pd_read_csv(f)
+            else:
+                pr_df = pd_read_csv(inpath)
+
+            for recall_threshold in recall_thresholds:
+                # TODO Use idxmin
+                result = {}
+                n_over_threshold = pr_df[pr_df > recall_threshold].sort_values(by='recall').iloc[0]['n_over_threshold']
+                result['distance_threshold'] = threshold
+                result['n_over_threshold'] = n_over_threshold
+                result['recall_threshold'] = recall_threshold
+            results.append(result)
+
+        # Make DF and save
+        total_results = pr_df['n_over_threshold'].max()
+        results_df = pd_DataFrame.from_records(results)
+        results_df['percent'] = (results_df.n_over_threshold / total_results)
+        if self.s3:
+            with self.s3.open(outpath, 'w') as f:
+                results_df.to_csv(f)
+        else:
+            results_df.to_csv(outpath)
+        return outpath
