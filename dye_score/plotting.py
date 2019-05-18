@@ -80,7 +80,7 @@ def get_plots_for_thresholds(
         else:
             pr_df = pd_read_csv(inpath)
         plots[threshold] = get_pr_plot(
-            pr_df, title=f'{threshold}', n_scripts_range, y_range, recall_color, n_scripts_color, **extra_plot_opts
+            pr_df, f'{threshold}', n_scripts_range, y_range, recall_color, n_scripts_color, **extra_plot_opts
         )
     return plots
 
