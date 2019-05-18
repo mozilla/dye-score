@@ -88,7 +88,7 @@ def get_plots_for_thresholds(
 def get_threshold_summary_plot(ds):
     resultsdir = ds.config('DYESCORE_RESULTS_DIR')
     inpath = os.path.join(resultsdir, f'recall_summary_plot_data.csv')
-    ds.file_out_validation(inpath)
+    ds.file_in_validation(inpath)
     if ds.s3:
         with ds.s3.open(inpath, 'r') as f:
             results_df = pd_read_csv(f)
@@ -99,10 +99,9 @@ def get_threshold_summary_plot(ds):
     palette = inferno(len(recall_thresholds) + 1)  # The yellow is often a little light
     source = ColumnDataSource(grouped_results_df)
     p = figure(
-        title='Scripts captured by distance threshold for 5 recall thresholds (colored)',
+        title=f'Scripts captured by distance threshold for {len(recall_thresholds)} recall thresholds (colored)',
         width=800, toolbar_location=None,
         tools='', y_range=Range1d(results_df.n_over_threshold.min(), results_df.n_over_threshold.max()),
-        background_fill_color='slategray'
     )
     p.xaxis.axis_label = 'distance threshold'
     p.yaxis.axis_label = 'minimum n_scripts'

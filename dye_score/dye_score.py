@@ -800,7 +800,7 @@ class DyeScore:
                 result['distance_threshold'] = threshold
                 result['n_over_threshold'] = n_over_threshold
                 result['recall_threshold'] = recall_threshold
-            results.append(result)
+                results.append(result)
 
         # Make DF and save
         total_results = pr_df['n_over_threshold'].max()
@@ -808,7 +808,7 @@ class DyeScore:
         results_df['percent'] = (results_df.n_over_threshold / total_results)
         if self.s3:
             with self.s3.open(outpath, 'w') as f:
-                results_df.to_csv(f)
+                results_df.to_csv(f, index=False)
         else:
-            results_df.to_csv(outpath)
+            results_df.to_csv(outpath, index=False)
         return outpath
