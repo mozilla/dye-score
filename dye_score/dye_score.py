@@ -481,12 +481,13 @@ class DyeScore:
 
     def compute_distances_for_dye_snippets(
         self, dye_snippets, filename_suffix='dye_snippets',
-        snippet_chunksize=1000, dye_snippet_chunksize=1000, override=False,
+        snippet_chunksize=1000, dye_snippet_chunksize=1000,
+        distance_function='chebyshev',
+        override=False,
     ):
         """Computes all pairwise distances from dye snippets to all other snippets.
 
         * Expects snippets file to exist.
-        * Uses chebyshev distance.
         * Writes results to zarr with name ``snippets_dye_distances_from_{filename_suffix}``
         * This is a long-running function - see dask for progress
 
@@ -494,6 +495,13 @@ class DyeScore:
             dye_snippets (np.array): Numpy array of snippets to be dyed. Must be a subset of snippets index.
             filename_suffix (str, optional): Change to differentiate between dye_snippet sets. Defaults to
                 ``dye_snippets``
+            snippet_chunksize (int, optional): Set the chunk size for snippet xarray input, i
+                along the snippet dimension (not the symbol dimension). Defaults to ``1000``.
+            dye_snippet_chunksize (int, optional): Set the chunk size for dye snippet xarray input,
+                along the snippet dimension (not the symbol dimension). Defaults to ``1000``.
+            distance_function (string or function, optional): Provide a function to compute distances or a string
+                to use a built-in distance function. See ``dye_score.distances.py`` for template for example
+                distance functions. Default is ``"chebyshev"``.
             override (bool, optional): Override output files. Defaults to ``False``.
         Returns:
             str. Path results were written to
@@ -507,6 +515,21 @@ class DyeScore:
         outpath = os.path.join(resultsdir, file_name)
         self.file_out_validation(outpath, override)
 
+        # Pick distance function
+        built_in_lookup = {
+            'chebyshev': get_chebyshev_distances_xarray_ufunc,
+        }
+        dist_func = None
+        if callable(distance_function):
+            dist_func = distance_function
+        else:
+            try:
+                dist_func = built_in_lookup[distance_function]
+            except KeyError:
+                print(f"The non-callable {distance_function} was passed as the distance function, but it does not\
+                      match any of the built-in functions: {','.join(built_in_lookup.keys())}")
+                raise
+
         # Process distances
         df = open_zarr(store=self.get_zarr_store(snippet_file))['data']
         df = df.chunk({'symbol': -1})
@@ -517,7 +540,7 @@ class DyeScore:
         df_dye_c = df_dye.chunk({'dye_snippet': dye_snippet_chunksize})
 
         distance_array = apply_ufunc(
-            get_chebyshev_distances_xarray_ufunc,
+            dist_func,
             df_c, df_dye_c,
             dask='parallelized',
             output_dtypes=[float],
