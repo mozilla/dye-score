@@ -34,12 +34,13 @@ def plot_key_leaky(percent_to_dye, key, y_axis_type='linear', bottom=0, bins=40)
 
 
 def get_pr_plot(
-    pr_df, title, plot_opts, n_scripts_range,
+    pr_df, title, n_scripts_range,
     y_range=(0, 1), recall_color='black', n_scripts_color='firebrick',
+    **extra_plot_opts,
 ):
     """Example code for plotting dye score threshold plots"""
     source = ColumnDataSource(pr_df)
-    p = figure(title=title, y_range=y_range, **plot_opts)
+    p = figure(title=title, y_range=y_range, **extra_plot_opts)
     p.x_range.flipped = True
     p.line(
         x='dye_score_threshold', y='recall', color=recall_color, source=source, line_width=3)
@@ -57,7 +58,10 @@ def get_pr_plot(
     return p
 
 
-def get_plots_for_thresholds(ds, thresholds, leaky_threshold, pr_plot_opts, filename_suffix='dye_snippets'):
+def get_plots_for_thresholds(
+    ds, thresholds, leaky_threshold, n_scripts_range, filename_suffix='dye_snippets',
+    y_range=(0, 1), recall_color='black', n_scripts_color='firebrick', **extra_plot_opts
+):
     resultsdir = ds.config('DYESCORE_RESULTS_DIR')
 
     # Infile validation
@@ -75,14 +79,16 @@ def get_plots_for_thresholds(ds, thresholds, leaky_threshold, pr_plot_opts, file
                 pr_df = pd_read_csv(f)
         else:
             pr_df = pd_read_csv(inpath)
-        plots[threshold] = get_pr_plot(pr_df, title=f'{threshold}', pr_plot_opts=pr_plot_opts)
+        plots[threshold] = get_pr_plot(
+            pr_df, f'{threshold}', n_scripts_range, y_range, recall_color, n_scripts_color, **extra_plot_opts
+        )
     return plots
 
 
 def get_threshold_summary_plot(ds):
     resultsdir = ds.config('DYESCORE_RESULTS_DIR')
     inpath = os.path.join(resultsdir, f'recall_summary_plot_data.csv')
-    ds.file_out_validation(inpath)
+    ds.file_in_validation(inpath)
     if ds.s3:
         with ds.s3.open(inpath, 'r') as f:
             results_df = pd_read_csv(f)
@@ -93,10 +99,9 @@ def get_threshold_summary_plot(ds):
     palette = inferno(len(recall_thresholds) + 1)  # The yellow is often a little light
     source = ColumnDataSource(grouped_results_df)
     p = figure(
-        title='Scripts captured by distance threshold for 5 recall thresholds (colored)',
+        title=f'Scripts captured by distance threshold for {len(recall_thresholds)} recall thresholds (colored)',
         width=800, toolbar_location=None,
         tools='', y_range=Range1d(results_df.n_over_threshold.min(), results_df.n_over_threshold.max()),
-        background_fill_color='slategray'
     )
     p.xaxis.axis_label = 'distance threshold'
     p.yaxis.axis_label = 'minimum n_scripts'

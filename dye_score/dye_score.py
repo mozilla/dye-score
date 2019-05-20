@@ -528,17 +528,23 @@ class DyeScore:
         return outpath
 
     def _validate_thresholds(
-        self, thresholds, resultsdir, filename_pattern, filename_suffix, override, leaky_threshold
+        self, thresholds, resultsdir, filename_pattern, filename_suffix, override, leaky_threshold=None
     ):
         thresholds_to_run = []
         existing_outpaths = []
         # If override is False, don't fail out, check
         # all thresholds and run those that don't have values
         for threshold in thresholds:
-            outpath = os.path.join(
-                resultsdir,
-                filename_pattern.format(suff=filename_suffix, t=threshold, leaky_threshold=leaky_threshold)
-            )
+            if leaky_threshold:
+                outpath = os.path.join(
+                    resultsdir,
+                    filename_pattern.format(suff=filename_suffix, t=threshold, leaky_threshold=leaky_threshold)
+                )
+            else:
+                outpath = os.path.join(
+                    resultsdir,
+                    filename_pattern.format(suff=filename_suffix, t=threshold)
+                )
             try:
                 self.file_out_validation(outpath, override)
                 thresholds_to_run.append(threshold)
@@ -800,7 +806,7 @@ class DyeScore:
                 result['distance_threshold'] = threshold
                 result['n_over_threshold'] = n_over_threshold
                 result['recall_threshold'] = recall_threshold
-            results.append(result)
+                results.append(result)
 
         # Make DF and save
         total_results = pr_df['n_over_threshold'].max()
@@ -808,7 +814,7 @@ class DyeScore:
         results_df['percent'] = (results_df.n_over_threshold / total_results)
         if self.s3:
             with self.s3.open(outpath, 'w') as f:
-                results_df.to_csv(f)
+                results_df.to_csv(f, index=False)
         else:
-            results_df.to_csv(outpath)
+            results_df.to_csv(outpath, index=False)
         return outpath
