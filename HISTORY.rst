@@ -1,3 +1,7 @@
+* v0.10.0
+
+  * Add new distance functions and tests 
+
 * v0.9.3
 
   * Small patches to leave 0.9 functional (`#26`_)
