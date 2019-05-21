@@ -1,3 +1,7 @@
+* v0.10.0
+
+  * Add new distance functions and tests (`#30`_) 
+
 * v0.9.3
 
   * Small patches to leave 0.9 functional (`#26`_)
@@ -19,3 +23,4 @@
 .. _#24: https://github.com/mozilla/dye-score/pull/24
 .. _#25: https://github.com/mozilla/dye-score/pull/25
 .. _#26: https://github.com/mozilla/dye-score/pull/26
+.. _#30: https://github.com/mozilla/dye-score/pull/30

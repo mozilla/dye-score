@@ -14,9 +14,10 @@ requirements = [
     'numpy>=1.14',
     'pyarrow==0.12.1',
     'pyyaml>=4.2b1',
+    's3fs>=0.2.1',
+    'scipy==1.3.0',
     'xarray>=0.12.0',
     'zarr>=2.2.0',
-    's3fs>=0.2.1',
 ]
 
 setup_requirements = ['pytest-runner', ]
@@ -44,6 +45,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/mozilla/dye-score',
-    version='0.9.4',
+    version='0.10.0',
     zip_safe=False,
 )

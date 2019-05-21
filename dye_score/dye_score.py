@@ -25,6 +25,9 @@ from xarray import (
 
 from .distances import (
     get_chebyshev_distances_xarray_ufunc,
+    get_jaccard_distances_xarray_ufunc,
+    get_cosine_distances_xarray_ufunc,
+    get_cityblock_distances_xarray_ufunc,
 )
 from .utils import (
     get_netloc,
@@ -501,7 +504,7 @@ class DyeScore:
                 along the snippet dimension (not the symbol dimension). Defaults to ``1000``.
             distance_function (string or function, optional): Provide a function to compute distances or a string
                 to use a built-in distance function. See ``dye_score.distances.py`` for template for example
-                distance functions. Default is ``"chebyshev"``.
+                distance functions. Default is ``"chebyshev"``. Alternatives are cosine, jaccard, cityblock.
             override (bool, optional): Override output files. Defaults to ``False``.
         Returns:
             str. Path results were written to
@@ -518,6 +521,9 @@ class DyeScore:
         # Pick distance function
         built_in_lookup = {
             'chebyshev': get_chebyshev_distances_xarray_ufunc,
+            'cosine': get_cosine_distances_xarray_ufunc,
+            'jaccard': get_jaccard_distances_xarray_ufunc,
+            'cityblock': get_cityblock_distances_xarray_ufunc,
         }
         dist_func = None
         if callable(distance_function):
