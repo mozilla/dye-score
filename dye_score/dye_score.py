@@ -25,6 +25,9 @@ from xarray import (
 
 from .distances import (
     get_chebyshev_distances_xarray_ufunc,
+    get_jaccard_distances_xarray_ufunc,
+    get_cosine_distances_xarray_ufunc,
+    get_cityblock_distances_xarray_ufunc,
 )
 from .utils import (
     get_netloc,
@@ -518,6 +521,9 @@ class DyeScore:
         # Pick distance function
         built_in_lookup = {
             'chebyshev': get_chebyshev_distances_xarray_ufunc,
+            'cosine': get_cosine_distances_xarray_ufunc,
+            'jaccard': get_jaccard_distances_xarray_ufunc,
+            'cityblock': get_cityblock_distances_xarray_ufunc,
         }
         dist_func = None
         if callable(distance_function):
