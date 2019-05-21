@@ -14,9 +14,10 @@ requirements = [
     'numpy>=1.14',
     'pyarrow==0.12.1',
     'pyyaml>=4.2b1',
+    's3fs>=0.2.1',
+    'scipy==1.3.0',
     'xarray>=0.12.0',
     'zarr>=2.2.0',
-    's3fs>=0.2.1',
 ]
 
 setup_requirements = ['pytest-runner', ]
