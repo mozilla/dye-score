@@ -504,7 +504,7 @@ class DyeScore:
                 along the snippet dimension (not the symbol dimension). Defaults to ``1000``.
             distance_function (string or function, optional): Provide a function to compute distances or a string
                 to use a built-in distance function. See ``dye_score.distances.py`` for template for example
-                distance functions. Default is ``"chebyshev"``.
+                distance functions. Default is ``"chebyshev"``. Alternatives are cosine, jaccard, cityblock.
             override (bool, optional): Override output files. Defaults to ``False``.
         Returns:
             str. Path results were written to
