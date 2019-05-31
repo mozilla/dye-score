@@ -274,11 +274,13 @@ class DyeScore:
     def build_raw_snippet_df(self, override=False, snippet_func=None):
         """Builds raw_snippets from input data
 
-        Snippet function is ``script_url.netloc||script_url.path_end||func_name``
+        Default snippet function is ``script_url.netloc||script_url.path_end||func_name``
         If script_url is missing, location is used.
 
         Args:
             override (bool): True to replace any existing outputs
+            snippet_func (function):  Function that accepts row of data as input and computes
+                                      the snippet value. Default provided.
 
         Returns:
             str. The file path where output is saved
