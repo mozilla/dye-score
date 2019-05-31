@@ -270,7 +270,11 @@ class DyeScore:
             if self.config('USE_AWS') is True:
                 self.s3.rm(outpath, recursive=True)
             else:
-                shutil.rmtree(outpath)
+                if os.path.isdir(outpath):
+                    shutil.rmtree(outpath)
+                else:
+                    os.remove(outpath)
+        return True
 
     def build_raw_snippet_df(self, override=False, snippet_func=None):
         """Builds raw_snippets from input data

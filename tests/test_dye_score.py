@@ -61,6 +61,15 @@ def test_data_validation_with_valid_file(tmpdir, sample_config):
     assert ds.validate_input_data() is True
 
 
+def test_deleting_recall_summary_file(tmpdir, sample_config):
+    ds = DyeScore(write_config_file(tmpdir, sample_config))
+    data_file = os.path.join(tmpdir, 'data.csv')
+    df = pd.DataFrame({'a': [1, 2, 3]})
+    df.to_csv(data_file)
+    result = ds.file_out_validation(data_file, override=True)
+    assert result is True
+
+
 ##
 # Test Config
 ##
