@@ -847,7 +847,14 @@ class DyeScore:
                 results.append(result)
 
         # Make DF and save
-        total_results = pr_df['n_over_threshold'].max()
+        inpath = os.path.join(
+            resultsdir, f'dye_score_from_{filename_suffix}_{thresholds[0]}_leak_{leaky_threshold}.csv')
+        if self.s3:
+            with self.s3.open(inpath, 'r') as f:
+                total_results = len(pd_read_csv(f))
+        else:
+            total_results = len(pd_read_csv(inpath))
+
         results_df = pd_DataFrame.from_records(results)
         results_df['percent'] = (results_df.n_over_threshold / total_results)
         if self.s3:
