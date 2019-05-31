@@ -28,6 +28,7 @@ from .distances import (
     get_jaccard_distances_xarray_ufunc,
     get_cosine_distances_xarray_ufunc,
     get_cityblock_distances_xarray_ufunc,
+    get_mahalanobis_distances_xarray_ufunc,
 )
 from .utils import (
     get_netloc,
@@ -488,7 +489,7 @@ class DyeScore:
         self, dye_snippets, filename_suffix='dye_snippets',
         snippet_chunksize=1000, dye_snippet_chunksize=1000,
         distance_function='chebyshev',
-        override=False,
+        override=False, **kwargs,
     ):
         """Computes all pairwise distances from dye snippets to all other snippets.
 
@@ -508,6 +509,7 @@ class DyeScore:
                 to use a built-in distance function. See ``dye_score.distances.py`` for template for example
                 distance functions. Default is ``"chebyshev"``. Alternatives are cosine, jaccard, cityblock.
             override (bool, optional): Override output files. Defaults to ``False``.
+            kwargs: kwargs to pass to distance function if required e.g. mahalanobis requires vi
         Returns:
             str. Path results were written to
 
@@ -526,6 +528,7 @@ class DyeScore:
             'cosine': get_cosine_distances_xarray_ufunc,
             'jaccard': get_jaccard_distances_xarray_ufunc,
             'cityblock': get_cityblock_distances_xarray_ufunc,
+            'mahalanobis': get_mahalanobis_distances_xarray_ufunc,
         }
         dist_func = None
         if callable(distance_function):
@@ -549,7 +552,7 @@ class DyeScore:
 
         distance_array = apply_ufunc(
             dist_func,
-            df_c, df_dye_c,
+            df_c, df_dye_c, **kwargs,
             dask='parallelized',
             output_dtypes=[float],
             input_core_dims=[['symbol'], ['symbol']],
