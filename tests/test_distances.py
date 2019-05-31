@@ -106,7 +106,7 @@ def test_cosine_func():
             assert actual_result == expected_result
 
 
-def test_mahalanobis_func():
+def test_mahalanobis_vectorized_func():
     input_array = np.random.rand(5, 1, 2)
     dye_snippets = input_array[[0, 1, 4]]
     # This is awkward because of the reshaping needed when data goes in
@@ -124,4 +124,4 @@ def test_mahalanobis_func():
                 input_array[i][0],
                 VI=vi,
             )
-            assert actual_result == expected_result
+            assert np.isclose(actual_result, expected_result)
