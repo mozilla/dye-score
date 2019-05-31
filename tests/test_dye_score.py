@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 import yaml
 
-from scipy.spatial.distance import chebyshev
+from scipy.spatial.distance import chebyshev, cosine
 from pyarrow.lib import ArrowIOError
 from yaml.scanner import ScannerError
 
@@ -153,3 +153,37 @@ def test_passing_unavailable_string_fails(tmpdir, sample_config):
         ds.compute_distances_for_dye_snippets(
             ['2'], override=True, distance_function='euclidean',
         )
+
+
+def test_distance_func_with_kwarg_works(tmpdir, sample_config):
+    sample_config['DYESCORE_DATA_DIR'] = tmpdir.strpath
+    ds = DyeScore(write_config_file(tmpdir, sample_config))
+
+    random_array = np.random.rand(5, 2)
+    snippet_ids = ['0', '1', '2', '3', '4']  # 0 index for sanity :D
+    data = xr.DataArray(
+        random_array,
+        coords={
+            'snippet': snippet_ids,
+            'symbol': ['window.navigator', 'canvas.context'],
+        },
+        dims=('snippet', 'symbol')
+    )
+    f = ds.dye_score_data_file('snippets')
+    data.to_dataset(name='data').to_zarr(store=ds.get_zarr_store(f))
+
+    # Run Test
+    dye_snippets = ['2']
+    weights = [0.4, 0.6]
+    kwargs = dict(w=weights)
+    result_file = ds.compute_distances_for_dye_snippets(
+        dye_snippets, distance_function='cosine', override=True, **kwargs
+    )
+
+    # Check Results
+    results = xr.open_zarr(store=ds.get_zarr_store(result_file))['data']
+    assert results.shape == (5, 1)
+    for s in snippet_ids:
+        actual_result = results.sel(snippet=s, dye_snippet='2').values
+        expected_result = cosine(random_array[2], random_array[int(s)], w=weights)
+        assert actual_result == expected_result

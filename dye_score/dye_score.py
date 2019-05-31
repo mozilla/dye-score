@@ -552,7 +552,7 @@ class DyeScore:
 
         distance_array = apply_ufunc(
             dist_func,
-            df_c, df_dye_c, **kwargs,
+            df_c, df_dye_c, kwargs=kwargs,
             dask='parallelized',
             output_dtypes=[float],
             input_core_dims=[['symbol'], ['symbol']],

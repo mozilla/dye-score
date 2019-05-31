@@ -5,12 +5,14 @@ from dye_score.distances import (
     get_jaccard_distances_xarray_ufunc,
     get_cityblock_distances_xarray_ufunc,
     get_cosine_distances_xarray_ufunc,
+    get_mahalanobis_distances_xarray_ufunc,
 )
 from scipy.spatial.distance import (
     chebyshev,
     jaccard,
     cosine,
     cityblock,
+    mahalanobis,
 )
 
 
@@ -100,5 +102,26 @@ def test_cosine_func():
             expected_result = cosine(
                 input_array[dye_snippet][0],
                 input_array[i][0]
+            )
+            assert actual_result == expected_result
+
+
+def test_mahalanobis_func():
+    input_array = np.random.rand(5, 1, 2)
+    dye_snippets = input_array[[0, 1, 4]]
+    # This is awkward because of the reshaping needed when data goes in
+    # and out of apply ufunc
+    vi = np.linalg.pinv(np.cov(dye_snippets[:, 0, :].T)).T
+
+    for dye_snippet in dye_snippets:
+        dye_snippet_result = get_mahalanobis_distances_xarray_ufunc(
+            input_array, dye_snippet, VI=vi,
+        )
+        assert dye_snippet_result.shape == (5, 1)
+        for i, actual_result in enumerate(dye_snippet_result):
+            expected_result = mahalanobis(
+                dye_snippet[0],
+                input_array[i][0],
+                VI=vi,
             )
             assert actual_result == expected_result
