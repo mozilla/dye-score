@@ -12,7 +12,7 @@ requirements = [
     'bokeh>=1.0.4',
     'dask[complete]>=1.1.5',
     'numpy>=1.14',
-    'pyarrow==0.12.1',
+    'pyarrow==0.15.1',
     'pyyaml>=4.2b1',
     's3fs>=0.2.1',
     'scipy==1.3.0',
